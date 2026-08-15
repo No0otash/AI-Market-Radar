@@ -1,11 +1,9 @@
 name: AI Market Radar
 
 on:
-
   workflow_dispatch:
 
   schedule:
-
     - cron: "*/15 * * * *"
 
 
@@ -15,58 +13,76 @@ jobs:
 
     runs-on: ubuntu-latest
 
-
     permissions:
-
       contents: write
 
 
     steps:
 
+      # ==========================================
+      # DOWNLOAD PROJECT
+      # ==========================================
 
-      - name: Download project
+      - name: Checkout repository
 
         uses: actions/checkout@v4
 
 
-      - name: Install Python
+      # ==========================================
+      # PYTHON
+      # ==========================================
+
+      - name: Setup Python
 
         uses: actions/setup-python@v5
 
         with:
-
           python-version: "3.12"
 
 
-      - name: Run Market Radar
+      # ==========================================
+      # RUN MARKET RADAR
+      # ==========================================
+
+      - name: Run AI Market Radar
 
         env:
 
-          TELEGRAM_BOT_TOKEN:
-            ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
 
-          TELEGRAM_CHAT_ID:
-            ${{ secrets.TELEGRAM_CHAT_ID }}
-
-        run:
-
-          python src/main.py
-
-
-      - name: Save state
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
         run: |
 
-          git config user.name \
-            "AI Market Radar"
+          echo "======================================"
 
-          git config user.email \
-            "actions@users.noreply.github.com"
+          echo "      AI MARKET RADAR STARTING"
+
+          echo "======================================"
+
+          python src/main.py
+
+          echo "======================================"
+
+          echo "      AI MARKET RADAR FINISHED"
+
+          echo "======================================"
+
+
+      # ==========================================
+      # SAVE NEWS DATABASE
+      # ==========================================
+
+      - name: Save radar state
+
+        run: |
+
+          git config user.name "AI Market Radar"
+
+          git config user.email "actions@users.noreply.github.com"
 
           git add state.json
 
-          git diff --cached --quiet || \
-            git commit \
-            -m "Update radar state"
+          git diff --cached --quiet || git commit -m "Update market radar state"
 
           git push
