@@ -1,22 +1,29 @@
 {
-  "impact_threshold": 0,
+  "impact_threshold": 6.0,
   "critical_threshold": 9.0,
   "max_alerts_per_run": 5,
+  "translation_enabled": true,
 
   "watchlist": [
     "BTC/USDT",
     "ETH/USDT",
+    "SOL/USDT",
+    "XRP/USDT",
     "EUR/USD",
     "GBP/USD",
     "USD/JPY",
+    "USD/CHF",
+    "AUD/USD",
     "XAU/USD",
     "DXY",
     "NASDAQ",
+    "S&P500",
     "WTI"
   ],
 
   "feeds": [
     "https://feeds.bbci.co.uk/news/world/rss.xml",
-    "https://feeds.bbci.co.uk/news/business/rss.xml"
+    "https://feeds.bbci.co.uk/news/business/rss.xml",
+    "https://www.coindesk.com/arc/outboundfeeds/rss/"
   ]
 }
