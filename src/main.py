@@ -516,7 +516,12 @@ def main():
     print(
         "=============================="
     )
-
+    send_telegram(
+        "🟢 TEST MESSAGE\n\n"
+        "AI Market Radar is connected "
+        "successfully to Telegram.\n\n"
+        "Bot: @notash_news_bot"
+    )
     print(
         "AI MARKET RADAR STARTED"
     )
