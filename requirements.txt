@@ -1,0 +1,2 @@
+# AI Market Radar
+# Uses Python standard library only.
