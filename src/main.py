@@ -19,27 +19,41 @@ with open(CONFIG_FILE, encoding="utf-8") as f:
 
 def fetch(url):
 
+    print("Fetching:", url)
+
     request = urllib.request.Request(
         url,
         headers={
-            "User-Agent": "AI-Market-Radar/1.0"
+            "User-Agent": (
+                "Mozilla/5.0 "
+                "(compatible; AI-Market-Radar/1.0)"
+            )
         }
     )
 
     with urllib.request.urlopen(
         request,
-        timeout=20
+        timeout=30
     ) as response:
 
-        return response.read()
+        data = response.read()
+
+        print(
+            "Downloaded:",
+            len(data),
+            "bytes"
+        )
+
+        return data
 
 
-def parse_rss(data):
+def parse_feed(data):
 
     root = ET.fromstring(data)
 
     articles = []
 
+    # RSS
     for item in root.findall(".//item"):
 
         title = (
@@ -65,12 +79,73 @@ def parse_rss(data):
                 "description": description
             })
 
+    # Atom
+    if not articles:
+
+        namespace = {
+            "atom":
+            "http://www.w3.org/2005/Atom"
+        }
+
+        for entry in root.findall(
+            ".//atom:entry",
+            namespace
+        ):
+
+            title = (
+                entry.findtext(
+                    "atom:title",
+                    default="",
+                    namespaces=namespace
+                )
+                or ""
+            ).strip()
+
+            description = (
+                entry.findtext(
+                    "atom:summary",
+                    default="",
+                    namespaces=namespace
+                )
+                or ""
+            ).strip()
+
+            link = ""
+
+            link_element = entry.find(
+                "atom:link",
+                namespace
+            )
+
+            if link_element is not None:
+
+                link = (
+                    link_element.attrib
+                    .get("href", "")
+                    .strip()
+                )
+
+            if title and link:
+
+                articles.append({
+                    "title": title,
+                    "link": link,
+                    "description": description
+                })
+
+    print(
+        "Articles found:",
+        len(articles)
+    )
+
     return articles
 
 
 def load_state():
 
-    if not os.path.exists(STATE_FILE):
+    if not os.path.exists(
+        STATE_FILE
+    ):
 
         return {
             "seen": []
@@ -94,7 +169,9 @@ def load_state():
 
 def save_state(state):
 
-    state["seen"] = state["seen"][-1000:]
+    state["seen"] = (
+        state["seen"][-1000:]
+    )
 
     with open(
         STATE_FILE,
@@ -114,6 +191,7 @@ def article_id(article):
 
     raw = (
         article["title"]
+        + "|"
         + article["link"]
     )
 
@@ -131,13 +209,7 @@ def analyze(article):
     ).lower()
 
     impact = 0
-
     reasons = []
-
-
-    # =========================
-    # MACRO ECONOMIC
-    # =========================
 
     macro_words = [
 
@@ -145,36 +217,26 @@ def analyze(article):
         "fomc",
         "ecb",
         "boj",
-
         "interest rate",
         "rate hike",
         "rate cut",
-
         "inflation",
         "cpi",
         "pce",
-
         "nfp",
         "nonfarm payroll",
-
         "unemployment",
         "gdp",
         "pmi"
     ]
-
 
     for word in macro_words:
 
         if word in text:
 
             impact += 1
-
             reasons.append(word)
 
-
-    # =========================
-    # GEOPOLITICAL RISK
-    # =========================
 
     risk_words = [
 
@@ -188,19 +250,13 @@ def analyze(article):
         "conflict"
     ]
 
-
     for word in risk_words:
 
         if word in text:
 
             impact += 1.5
-
             reasons.append(word)
 
-
-    # =========================
-    # CRYPTO
-    # =========================
 
     crypto_words = [
 
@@ -213,19 +269,13 @@ def analyze(article):
         "crypto regulation"
     ]
 
-
     for word in crypto_words:
 
         if word in text:
 
             impact += 1.5
-
             reasons.append(word)
 
-
-    # =========================
-    # ENERGY
-    # =========================
 
     energy_words = [
 
@@ -235,13 +285,11 @@ def analyze(article):
         "wti"
     ]
 
-
     for word in energy_words:
 
         if word in text:
 
             impact += 1
-
             reasons.append(word)
 
 
@@ -250,10 +298,6 @@ def analyze(article):
         10
     )
 
-
-    # =========================
-    # MARKET DIRECTION
-    # =========================
 
     direction = "NEUTRAL"
 
@@ -313,24 +357,14 @@ def analyze(article):
         direction = "DUMP"
 
 
-    # =========================
-    # CONFIDENCE
-    # =========================
-
     confidence = min(
-
         round(
             50 + impact * 4.5,
             1
         ),
-
         95
     )
 
-
-    # =========================
-    # AFFECTED MARKETS
-    # =========================
 
     instruments = []
 
@@ -410,10 +444,6 @@ def analyze(article):
         )
 
 
-    # =========================
-    # TIME HORIZON
-    # =========================
-
     if impact >= 8:
 
         horizon = "15m - 4h"
@@ -430,27 +460,22 @@ def analyze(article):
     return {
 
         "impact": impact,
-
         "direction": direction,
-
         "confidence": confidence,
-
         "instruments": instruments,
-
         "horizon": horizon,
-
         "reasons": reasons
     }
 
 
 def send_telegram(message):
 
-    url = (
+    print("Sending Telegram message...")
 
+    url = (
         "https://api.telegram.org/"
         f"bot{TOKEN}/sendMessage"
     )
-
 
     data = urllib.parse.urlencode({
 
@@ -473,19 +498,38 @@ def send_telegram(message):
     )
 
 
-    urllib.request.urlopen(
-
+    with urllib.request.urlopen(
         request,
+        timeout=30
+    ) as response:
 
-        timeout=20
-    )
+        result = response.read().decode()
+
+        print(
+            "Telegram response:",
+            result
+        )
 
 
 def main():
 
+    print(
+        "=============================="
+    )
+
+    print(
+        "AI MARKET RADAR STARTED"
+    )
+
+    print(
+        "=============================="
+    )
+
+
     state = load_state()
 
     alerts_sent = 0
+    total_articles = 0
 
 
     for feed in CONFIG["feeds"]:
@@ -494,12 +538,16 @@ def main():
 
             data = fetch(feed)
 
-            articles = parse_rss(data)
+            articles = parse_feed(data)
+
+            total_articles += len(
+                articles
+            )
 
         except Exception as error:
 
             print(
-                "Feed error:",
+                "FEED ERROR:",
                 feed,
                 error
             )
@@ -530,42 +578,33 @@ def main():
             impact = result["impact"]
 
 
-            if (
-                impact
-                < CONFIG[
-                    "impact_threshold"
-                ]
-            ):
+            if impact < CONFIG[
+                "impact_threshold"
+            ]:
 
                 continue
 
 
-            if (
-                alerts_sent
-                >= CONFIG[
-                    "max_alerts_per_run"
-                ]
-            ):
+            if alerts_sent >= CONFIG[
+                "max_alerts_per_run"
+            ]:
 
                 break
 
 
-            if (
-                impact
-                >= CONFIG[
-                    "critical_threshold"
-                ]
-            ):
+            if impact >= CONFIG[
+                "critical_threshold"
+            ]:
 
-                level = (
-                    "🚨 CRITICAL"
-                )
+                level = "🚨 CRITICAL"
+
+            elif impact >= 7:
+
+                level = "⚡ HIGH IMPACT"
 
             else:
 
-                level = (
-                    "⚡ HIGH IMPACT"
-                )
+                level = "📰 MARKET NEWS"
 
 
             message = f"""
@@ -588,8 +627,8 @@ def main():
 💱 Affected Markets:
 {", ".join(result["instruments"])}
 
-🔎 Reason:
-{", ".join(result["reasons"][:8])}
+🔎 Signals:
+{", ".join(result["reasons"][:8]) if result["reasons"] else "General market news"}
 
 ⚠️ Analytical signal,
 not a guaranteed trade.
@@ -608,14 +647,14 @@ not a guaranteed trade.
                 alerts_sent += 1
 
                 print(
-                    "Alert sent:",
+                    "ALERT SENT:",
                     article["title"]
                 )
 
             except Exception as error:
 
                 print(
-                    "Telegram error:",
+                    "TELEGRAM ERROR:",
                     error
                 )
 
@@ -624,8 +663,21 @@ not a guaranteed trade.
 
 
     print(
-        f"Finished. "
-        f"Alerts sent: {alerts_sent}"
+        "=============================="
+    )
+
+    print(
+        "TOTAL ARTICLES:",
+        total_articles
+    )
+
+    print(
+        "ALERTS SENT:",
+        alerts_sent
+    )
+
+    print(
+        "=============================="
     )
 
 
