@@ -6,10 +6,6 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 
 
-# =========================================================
-# CONFIGURATION
-# =========================================================
-
 CONFIG_FILE = "config.json"
 STATE_FILE = "state.json"
 
@@ -18,23 +14,22 @@ CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
 
 # =========================================================
-# BASIC VALIDATION
+# VALIDATION
 # =========================================================
 
 if not TOKEN:
     raise RuntimeError(
-        "TELEGRAM_BOT_TOKEN secret is missing."
+        "TELEGRAM_BOT_TOKEN is missing."
     )
 
 if not CHAT_ID:
     raise RuntimeError(
-        "TELEGRAM_CHAT_ID secret is missing."
+        "TELEGRAM_CHAT_ID is missing."
     )
-
 
 if not os.path.exists(CONFIG_FILE):
     raise RuntimeError(
-        "config.json was not found."
+        "config.json not found."
     )
 
 
@@ -42,9 +37,9 @@ with open(
     CONFIG_FILE,
     "r",
     encoding="utf-8"
-) as file:
+) as f:
 
-    CONFIG = json.load(file)
+    CONFIG = json.load(f)
 
 
 # =========================================================
@@ -53,16 +48,14 @@ with open(
 
 def send_telegram(message):
 
-    print("Sending Telegram message...")
-
     url = (
         "https://api.telegram.org/"
-        f"bot{TOKEN}/sendMessage"
+        f"bot{TOKEN.strip()}/sendMessage"
     )
 
     payload = urllib.parse.urlencode({
 
-        "chat_id": CHAT_ID,
+        "chat_id": CHAT_ID.strip(),
 
         "text": message,
 
@@ -95,23 +88,26 @@ def send_telegram(message):
             "utf-8"
         )
 
-        print(
-            "Telegram response:",
-            result
-        )
+        parsed = json.loads(result)
 
-        return result
+        if not parsed.get("ok"):
+
+            raise RuntimeError(
+                f"Telegram error: {result}"
+            )
+
+        return parsed
 
 
 # =========================================================
-# NEWS DOWNLOAD
+# NEWS FETCH
 # =========================================================
 
 def fetch_feed(url):
 
-    print("")
-    print("Fetching:")
-    print(url)
+    print(
+        f"Fetching: {url}"
+    )
 
     request = urllib.request.Request(
 
@@ -119,7 +115,7 @@ def fetch_feed(url):
 
         headers={
             "User-Agent":
-            "Mozilla/5.0 AI-Market-Radar/1.0"
+            "Mozilla/5.0 AI-Market-Radar/2.0"
         }
     )
 
@@ -133,16 +129,14 @@ def fetch_feed(url):
 
 
     print(
-        "Downloaded:",
-        len(data),
-        "bytes"
+        f"Downloaded: {len(data)} bytes"
     )
 
     return data
 
 
 # =========================================================
-# RSS / ATOM PARSER
+# RSS / ATOM
 # =========================================================
 
 def parse_feed(data):
@@ -152,9 +146,9 @@ def parse_feed(data):
     articles = []
 
 
-    # -----------------------------------------------------
+    # -------------------------
     # RSS
-    # -----------------------------------------------------
+    # -------------------------
 
     for item in root.findall(
         ".//item"
@@ -192,9 +186,9 @@ def parse_feed(data):
             })
 
 
-    # -----------------------------------------------------
+    # -------------------------
     # ATOM
-    # -----------------------------------------------------
+    # -------------------------
 
     if not articles:
 
@@ -242,10 +236,7 @@ def parse_feed(data):
 
                 link = (
                     link_element.attrib
-                    .get(
-                        "href",
-                        ""
-                    )
+                    .get("href", "")
                     .strip()
                 )
 
@@ -263,11 +254,6 @@ def parse_feed(data):
 
                 })
 
-
-    print(
-        "Articles found:",
-        len(articles)
-    )
 
     return articles
 
@@ -293,9 +279,27 @@ def load_state():
             STATE_FILE,
             "r",
             encoding="utf-8"
-        ) as file:
+        ) as f:
 
-            return json.load(file)
+            data = json.load(f)
+
+
+        if not isinstance(
+            data,
+            dict
+        ):
+
+            return {
+                "seen": []
+            }
+
+
+        if "seen" not in data:
+
+            data["seen"] = []
+
+
+        return data
 
 
     except Exception:
@@ -308,7 +312,7 @@ def load_state():
 def save_state(state):
 
     state["seen"] = (
-        state["seen"][-1000:]
+        state["seen"][-2000:]
     )
 
 
@@ -316,17 +320,17 @@ def save_state(state):
         STATE_FILE,
         "w",
         encoding="utf-8"
-    ) as file:
+    ) as f:
 
         json.dump(
             state,
-            file,
+            f,
             ensure_ascii=False,
             indent=2
         )
 
 
-def get_article_id(article):
+def article_id(article):
 
     raw = (
 
@@ -366,11 +370,11 @@ def analyze(article):
     reasons = []
 
 
-    # -----------------------------------------------------
+    # =====================================================
     # CENTRAL BANKS
-    # -----------------------------------------------------
+    # =====================================================
 
-    central_bank_words = [
+    central_bank = [
 
         "fed",
         "fomc",
@@ -382,20 +386,22 @@ def analyze(article):
     ]
 
 
-    for word in central_bank_words:
+    for word in central_bank:
 
         if word in text:
 
-            impact += 1.5
+            impact += 2.0
 
-            reasons.append(word)
+            reasons.append(
+                word
+            )
 
 
-    # -----------------------------------------------------
-    # INTEREST RATES
-    # -----------------------------------------------------
+    # =====================================================
+    # RATES
+    # =====================================================
 
-    rate_words = [
+    rates = [
 
         "interest rate",
         "rate hike",
@@ -406,20 +412,22 @@ def analyze(article):
     ]
 
 
-    for word in rate_words:
+    for word in rates:
 
         if word in text:
 
-            impact += 1.5
+            impact += 2.0
 
-            reasons.append(word)
+            reasons.append(
+                word
+            )
 
 
-    # -----------------------------------------------------
-    # INFLATION / ECONOMIC DATA
-    # -----------------------------------------------------
+    # =====================================================
+    # MACRO DATA
+    # =====================================================
 
-    macro_words = [
+    macro = [
 
         "inflation",
         "cpi",
@@ -429,25 +437,28 @@ def analyze(article):
         "unemployment",
         "gdp",
         "pmi",
-        "retail sales"
+        "retail sales",
+        "jobs report"
 
     ]
 
 
-    for word in macro_words:
+    for word in macro:
 
         if word in text:
 
-            impact += 1.0
+            impact += 1.5
 
-            reasons.append(word)
+            reasons.append(
+                word
+            )
 
 
-    # -----------------------------------------------------
+    # =====================================================
     # GEOPOLITICS
-    # -----------------------------------------------------
+    # =====================================================
 
-    geopolitical_words = [
+    geopolitical = [
 
         "war",
         "attack",
@@ -457,28 +468,38 @@ def analyze(article):
         "conflict",
         "crisis",
         "ceasefire",
-        "military"
+        "military",
+        "iran",
+        "israel",
+        "russia",
+        "ukraine",
+        "china",
+        "taiwan"
 
     ]
 
 
-    for word in geopolitical_words:
+    for word in geopolitical:
 
         if word in text:
 
             impact += 1.5
 
-            reasons.append(word)
+            reasons.append(
+                word
+            )
 
 
-    # -----------------------------------------------------
+    # =====================================================
     # CRYPTO
-    # -----------------------------------------------------
+    # =====================================================
 
-    crypto_words = [
+    crypto = [
 
         "bitcoin",
+        "btc",
         "ethereum",
+        "eth",
         "crypto",
         "bitcoin etf",
         "crypto etf",
@@ -489,36 +510,41 @@ def analyze(article):
     ]
 
 
-    for word in crypto_words:
+    for word in crypto:
 
         if word in text:
 
             impact += 1.5
 
-            reasons.append(word)
+            reasons.append(
+                word
+            )
 
 
-    # -----------------------------------------------------
+    # =====================================================
     # ENERGY
-    # -----------------------------------------------------
+    # =====================================================
 
-    energy_words = [
+    energy = [
 
         "oil",
         "opec",
         "brent",
-        "wti"
+        "wti",
+        "crude oil"
 
     ]
 
 
-    for word in energy_words:
+    for word in energy:
 
         if word in text:
 
             impact += 1.0
 
-            reasons.append(word)
+            reasons.append(
+                word
+            )
 
 
     impact = min(
@@ -534,7 +560,7 @@ def analyze(article):
     direction = "NEUTRAL"
 
 
-    bullish_words = [
+    pump_words = [
 
         "rate cut",
         "dovish",
@@ -548,7 +574,7 @@ def analyze(article):
     ]
 
 
-    bearish_words = [
+    dump_words = [
 
         "rate hike",
         "hawkish",
@@ -561,37 +587,38 @@ def analyze(article):
     ]
 
 
-    volatile_words = [
+    volatility_words = [
 
         "war",
         "attack",
         "invasion",
         "missile",
         "bank failure",
-        "financial crisis"
+        "financial crisis",
+        "military escalation"
 
     ]
 
 
     if any(
-        word in text
-        for word in volatile_words
+        x in text
+        for x in volatility_words
     ):
 
         direction = "VOLATILE"
 
 
     elif any(
-        word in text
-        for word in bullish_words
+        x in text
+        for x in pump_words
     ):
 
         direction = "PUMP"
 
 
     elif any(
-        word in text
-        for word in bearish_words
+        x in text
+        for x in dump_words
     ):
 
         direction = "DUMP"
@@ -618,17 +645,18 @@ def analyze(article):
     # AFFECTED MARKETS
     # =====================================================
 
-    instruments = []
+    markets = []
 
 
     if any(
-        word in text
-        for word in [
+        x in text
+        for x in [
 
             "fed",
             "fomc",
             "ecb",
             "boj",
+            "boe",
             "cpi",
             "pce",
             "nfp",
@@ -638,7 +666,7 @@ def analyze(article):
         ]
     ):
 
-        instruments += [
+        markets += [
 
             "EUR/USD",
             "GBP/USD",
@@ -653,19 +681,11 @@ def analyze(article):
 
 
     if any(
-        word in text
-        for word in [
-
-            "bitcoin",
-            "ethereum",
-            "crypto",
-            "crypto etf",
-            "exchange hack"
-
-        ]
+        x in text
+        for x in crypto
     ):
 
-        instruments += [
+        markets += [
 
             "BTC/USDT",
             "ETH/USDT"
@@ -674,18 +694,11 @@ def analyze(article):
 
 
     if any(
-        word in text
-        for word in [
-
-            "oil",
-            "opec",
-            "brent",
-            "wti"
-
-        ]
+        x in text
+        for x in energy
     ):
 
-        instruments += [
+        markets += [
 
             "WTI",
             "CAD"
@@ -694,11 +707,11 @@ def analyze(article):
 
 
     if any(
-        word in text
-        for word in geopolitical_words
+        x in text
+        for x in geopolitical
     ):
 
-        instruments += [
+        markets += [
 
             "XAU/USD",
             "USD/JPY",
@@ -707,16 +720,16 @@ def analyze(article):
         ]
 
 
-    instruments = list(
+    markets = list(
         dict.fromkeys(
-            instruments
+            markets
         )
     )
 
 
-    if not instruments:
+    if not markets:
 
-        instruments = (
+        markets = (
             CONFIG[
                 "watchlist"
             ][:3]
@@ -748,16 +761,106 @@ def analyze(article):
 
         "confidence": confidence,
 
-        "instruments":
-        instruments,
+        "markets": markets,
 
-        "horizon":
-        horizon,
+        "horizon": horizon,
 
-        "reasons":
-        reasons
+        "reasons": list(
+            dict.fromkeys(
+                reasons
+            )
+        )
 
     }
+
+
+# =========================================================
+# FORMAT ALERT
+# =========================================================
+
+def format_alert(
+    article,
+    analysis
+):
+
+    impact = analysis[
+        "impact"
+    ]
+
+
+    if impact >= 9:
+
+        level = "🚨 CRITICAL"
+
+    elif impact >= 7:
+
+        level = "⚡ HIGH IMPACT"
+
+    elif impact >= 4:
+
+        level = "🟡 MARKET IMPACT"
+
+    else:
+
+        level = "📰 MARKET NEWS"
+
+
+    reasons = analysis[
+        "reasons"
+    ]
+
+
+    if reasons:
+
+        signal_text = (
+            ", ".join(
+                reasons[:8]
+            )
+        )
+
+    else:
+
+        signal_text = (
+            "General market news"
+        )
+
+
+    message = f"""
+{level}
+
+📰 {article["title"]}
+
+━━━━━━━━━━━━━━━━
+
+📊 IMPACT
+{impact}/10
+
+🎯 DIRECTION
+{analysis["direction"]}
+
+🧠 CONFIDENCE
+{analysis["confidence"]}%
+
+⏱ EXPECTED HORIZON
+{analysis["horizon"]}
+
+💱 AFFECTED MARKETS
+{", ".join(analysis["markets"])}
+
+🔎 SIGNALS
+{signal_text}
+
+━━━━━━━━━━━━━━━━
+
+⚠️ News-based market signal.
+Not guaranteed financial advice.
+
+📰 SOURCE
+{article["link"]}
+""".strip()
+
+
+    return message
 
 
 # =========================================================
@@ -770,69 +873,29 @@ def main():
     print(
         "================================"
     )
+
     print(
-        "     AI MARKET RADAR STARTED"
+        "      AI MARKET RADAR"
     )
+
     print(
         "================================"
     )
 
-
-    # -----------------------------------------------------
-    # TELEGRAM TEST
-    # -----------------------------------------------------
-
-    test_message = (
-
-        "🟢 AI MARKET RADAR\n\n"
-
-        "Telegram connection test "
-        "successful.\n\n"
-
-        "Bot: @notash_news_bot"
-
-    )
-
-
-    try:
-
-        send_telegram(
-            test_message
-        )
-
-        print(
-            "Telegram test: SUCCESS"
-        )
-
-
-    except Exception as error:
-
-        print(
-            "Telegram test: FAILED"
-        )
-
-        print(
-            error
-        )
-
-        raise
-
-
-    # -----------------------------------------------------
-    # LOAD STATE
-    # -----------------------------------------------------
 
     state = load_state()
 
 
     total_articles = 0
 
+    new_articles = 0
+
     alerts_sent = 0
 
 
-    # -----------------------------------------------------
-    # NEWS
-    # -----------------------------------------------------
+    # =====================================================
+    # FETCH ALL SOURCES
+    # =====================================================
 
     for feed in CONFIG[
         "feeds"
@@ -844,9 +907,14 @@ def main():
                 feed
             )
 
-
             articles = parse_feed(
                 data
+            )
+
+
+            print(
+                f"Articles found: "
+                f"{len(articles)}"
             )
 
 
@@ -858,10 +926,7 @@ def main():
         except Exception as error:
 
             print(
-                "FEED ERROR:"
-            )
-
-            print(
+                "FEED ERROR:",
                 feed
             )
 
@@ -872,25 +937,25 @@ def main():
             continue
 
 
+        # =================================================
+        # PROCESS ARTICLES
+        # =================================================
+
         for article in articles:
 
-            article_id = (
-                get_article_id(
-                    article
-                )
+            uid = article_id(
+                article
             )
 
 
-            if article_id in (
+            if uid in (
                 state["seen"]
             ):
 
                 continue
 
 
-            state["seen"].append(
-                article_id
-            )
+            new_articles += 1
 
 
             analysis = analyze(
@@ -903,132 +968,95 @@ def main():
             ]
 
 
-            threshold = CONFIG[
-                "impact_threshold"
-            ]
-
-
-            if impact < threshold:
-
-                continue
-
-
-            if alerts_sent >= (
-                CONFIG[
-                    "max_alerts_per_run"
-                ]
-            ):
-
-                break
-
-
-            if impact >= (
-                CONFIG[
-                    "critical_threshold"
-                ]
-            ):
-
-                level = (
-                    "🚨 CRITICAL"
-                )
-
-
-            elif impact >= 7:
-
-                level = (
-                    "⚡ HIGH IMPACT"
-                )
-
-
-            else:
-
-                level = (
-                    "📰 MARKET NEWS"
-                )
-
-
-            reasons = (
-                ", ".join(
-                    analysis[
-                        "reasons"
-                    ][:8]
+            threshold = float(
+                CONFIG.get(
+                    "impact_threshold",
+                    0
                 )
             )
 
 
-            if not reasons:
-
-                reasons = (
-                    "General market news"
-                )
-
-
-            message = f"""
-
-{level}
-
-📰 {article["title"]}
-
-📊 Market Impact:
-{impact}/10
-
-🎯 Direction:
-{analysis["direction"]}
-
-🧠 Confidence:
-{analysis["confidence"]}%
-
-⏱ Horizon:
-{analysis["horizon"]}
-
-💱 Affected Markets:
-{", ".join(analysis["instruments"])}
-
-🔎 Signals:
-{reasons}
-
-⚠️ Analytical signal,
-not guaranteed financial advice.
-
-📰 Source:
-{article["link"]}
-
-""".strip()
+            print(
+                f"NEWS: "
+                f"{article['title'][:80]}"
+            )
 
 
-            try:
-
-                send_telegram(
-                    message
-                )
+            print(
+                f"IMPACT: {impact}"
+            )
 
 
-                alerts_sent += 1
+            # ---------------------------------------------
+            # SEND ALERT
+            # ---------------------------------------------
+
+            if impact >= threshold:
+
+                if alerts_sent < int(
+                    CONFIG.get(
+                        "max_alerts_per_run",
+                        5
+                    )
+                ):
+
+                    message = (
+                        format_alert(
+                            article,
+                            analysis
+                        )
+                    )
 
 
-                print(
-                    "ALERT SENT:"
-                )
+                    try:
 
-                print(
-                    article["title"]
-                )
+                        send_telegram(
+                            message
+                        )
 
 
-            except Exception as error:
-
-                print(
-                    "TELEGRAM ERROR:"
-                )
-
-                print(
-                    error
-                )
+                        alerts_sent += 1
 
 
-    # -----------------------------------------------------
-    # SAVE STATE
-    # -----------------------------------------------------
+                        print(
+                            "ALERT SENT"
+                        )
+
+
+                        # Only mark as seen
+                        # AFTER successful send.
+
+                        state[
+                            "seen"
+                        ].append(uid)
+
+
+                    except Exception as error:
+
+                        print(
+                            "TELEGRAM ERROR:"
+                        )
+
+                        print(
+                            error
+                        )
+
+
+                else:
+
+                    print(
+                        "ALERT LIMIT REACHED"
+                    )
+
+            else:
+
+                # Low-impact news is still
+                # marked as seen.
+
+                state[
+                    "seen"
+                ].append(uid)
+
 
     save_state(
         state
@@ -1041,13 +1069,18 @@ not guaranteed financial advice.
     )
 
     print(
-        "TOTAL ARTICLES:",
-        total_articles
+        f"TOTAL ARTICLES: "
+        f"{total_articles}"
     )
 
     print(
-        "ALERTS SENT:",
-        alerts_sent
+        f"NEW ARTICLES: "
+        f"{new_articles}"
+    )
+
+    print(
+        f"ALERTS SENT: "
+        f"{alerts_sent}"
     )
 
     print(
