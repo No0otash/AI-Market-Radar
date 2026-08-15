@@ -6,30 +6,123 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 
 
+# =========================================================
+# CONFIGURATION
+# =========================================================
+
 CONFIG_FILE = "config.json"
 STATE_FILE = "state.json"
 
-TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
+TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
 
-with open(CONFIG_FILE, encoding="utf-8") as f:
-    CONFIG = json.load(f)
+# =========================================================
+# BASIC VALIDATION
+# =========================================================
+
+if not TOKEN:
+    raise RuntimeError(
+        "TELEGRAM_BOT_TOKEN secret is missing."
+    )
+
+if not CHAT_ID:
+    raise RuntimeError(
+        "TELEGRAM_CHAT_ID secret is missing."
+    )
 
 
-def fetch(url):
+if not os.path.exists(CONFIG_FILE):
+    raise RuntimeError(
+        "config.json was not found."
+    )
 
-    print("Fetching:", url)
+
+with open(
+    CONFIG_FILE,
+    "r",
+    encoding="utf-8"
+) as file:
+
+    CONFIG = json.load(file)
+
+
+# =========================================================
+# TELEGRAM
+# =========================================================
+
+def send_telegram(message):
+
+    print("Sending Telegram message...")
+
+    url = (
+        "https://api.telegram.org/"
+        f"bot{TOKEN}/sendMessage"
+    )
+
+    payload = urllib.parse.urlencode({
+
+        "chat_id": CHAT_ID,
+
+        "text": message,
+
+        "disable_web_page_preview": "true"
+
+    }).encode("utf-8")
+
 
     request = urllib.request.Request(
+
         url,
+
+        data=payload,
+
+        method="POST",
+
         headers={
-            "User-Agent": (
-                "Mozilla/5.0 "
-                "(compatible; AI-Market-Radar/1.0)"
-            )
+            "Content-Type":
+            "application/x-www-form-urlencoded"
         }
     )
+
+
+    with urllib.request.urlopen(
+        request,
+        timeout=30
+    ) as response:
+
+        result = response.read().decode(
+            "utf-8"
+        )
+
+        print(
+            "Telegram response:",
+            result
+        )
+
+        return result
+
+
+# =========================================================
+# NEWS DOWNLOAD
+# =========================================================
+
+def fetch_feed(url):
+
+    print("")
+    print("Fetching:")
+    print(url)
+
+    request = urllib.request.Request(
+
+        url,
+
+        headers={
+            "User-Agent":
+            "Mozilla/5.0 AI-Market-Radar/1.0"
+        }
+    )
+
 
     with urllib.request.urlopen(
         request,
@@ -38,14 +131,19 @@ def fetch(url):
 
         data = response.read()
 
-        print(
-            "Downloaded:",
-            len(data),
-            "bytes"
-        )
 
-        return data
+    print(
+        "Downloaded:",
+        len(data),
+        "bytes"
+    )
 
+    return data
+
+
+# =========================================================
+# RSS / ATOM PARSER
+# =========================================================
 
 def parse_feed(data):
 
@@ -53,39 +151,58 @@ def parse_feed(data):
 
     articles = []
 
+
+    # -----------------------------------------------------
     # RSS
-    for item in root.findall(".//item"):
+    # -----------------------------------------------------
+
+    for item in root.findall(
+        ".//item"
+    ):
 
         title = (
             item.findtext("title")
             or ""
         ).strip()
 
+
         link = (
             item.findtext("link")
             or ""
         ).strip()
+
 
         description = (
             item.findtext("description")
             or ""
         ).strip()
 
+
         if title and link:
 
             articles.append({
+
                 "title": title,
+
                 "link": link,
-                "description": description
+
+                "description":
+                description
+
             })
 
-    # Atom
+
+    # -----------------------------------------------------
+    # ATOM
+    # -----------------------------------------------------
+
     if not articles:
 
         namespace = {
             "atom":
             "http://www.w3.org/2005/Atom"
         }
+
 
         for entry in root.findall(
             ".//atom:entry",
@@ -101,6 +218,7 @@ def parse_feed(data):
                 or ""
             ).strip()
 
+
             description = (
                 entry.findtext(
                     "atom:summary",
@@ -110,28 +228,41 @@ def parse_feed(data):
                 or ""
             ).strip()
 
+
             link = ""
+
 
             link_element = entry.find(
                 "atom:link",
                 namespace
             )
 
+
             if link_element is not None:
 
                 link = (
                     link_element.attrib
-                    .get("href", "")
+                    .get(
+                        "href",
+                        ""
+                    )
                     .strip()
                 )
+
 
             if title and link:
 
                 articles.append({
+
                     "title": title,
+
                     "link": link,
-                    "description": description
+
+                    "description":
+                    description
+
                 })
+
 
     print(
         "Articles found:",
@@ -140,6 +271,10 @@ def parse_feed(data):
 
     return articles
 
+
+# =========================================================
+# STATE
+# =========================================================
 
 def load_state():
 
@@ -151,14 +286,17 @@ def load_state():
             "seen": []
         }
 
+
     try:
 
         with open(
             STATE_FILE,
+            "r",
             encoding="utf-8"
-        ) as f:
+        ) as file:
 
-            return json.load(f)
+            return json.load(file)
+
 
     except Exception:
 
@@ -173,53 +311,116 @@ def save_state(state):
         state["seen"][-1000:]
     )
 
+
     with open(
         STATE_FILE,
         "w",
         encoding="utf-8"
-    ) as f:
+    ) as file:
 
         json.dump(
             state,
-            f,
+            file,
             ensure_ascii=False,
             indent=2
         )
 
 
-def article_id(article):
+def get_article_id(article):
 
     raw = (
+
         article["title"]
+
         + "|"
+
         + article["link"]
+
     )
+
 
     return hashlib.sha256(
         raw.encode("utf-8")
     ).hexdigest()
 
 
+# =========================================================
+# MARKET ANALYSIS
+# =========================================================
+
 def analyze(article):
 
     text = (
+
         article["title"]
+
         + " "
+
         + article["description"]
+
     ).lower()
 
-    impact = 0
+
+    impact = 0.0
+
     reasons = []
 
-    macro_words = [
+
+    # -----------------------------------------------------
+    # CENTRAL BANKS
+    # -----------------------------------------------------
+
+    central_bank_words = [
 
         "fed",
         "fomc",
         "ecb",
         "boj",
+        "boe",
+        "central bank"
+
+    ]
+
+
+    for word in central_bank_words:
+
+        if word in text:
+
+            impact += 1.5
+
+            reasons.append(word)
+
+
+    # -----------------------------------------------------
+    # INTEREST RATES
+    # -----------------------------------------------------
+
+    rate_words = [
+
         "interest rate",
         "rate hike",
         "rate cut",
+        "rates higher",
+        "rates lower"
+
+    ]
+
+
+    for word in rate_words:
+
+        if word in text:
+
+            impact += 1.5
+
+            reasons.append(word)
+
+
+    # -----------------------------------------------------
+    # INFLATION / ECONOMIC DATA
+    # -----------------------------------------------------
+
+    macro_words = [
+
         "inflation",
         "cpi",
         "pce",
@@ -227,36 +428,52 @@ def analyze(article):
         "nonfarm payroll",
         "unemployment",
         "gdp",
-        "pmi"
+        "pmi",
+        "retail sales"
+
     ]
+
 
     for word in macro_words:
 
         if word in text:
 
-            impact += 1
+            impact += 1.0
+
             reasons.append(word)
 
 
-    risk_words = [
+    # -----------------------------------------------------
+    # GEOPOLITICS
+    # -----------------------------------------------------
+
+    geopolitical_words = [
 
         "war",
         "attack",
         "invasion",
+        "missile",
         "sanctions",
+        "conflict",
         "crisis",
-        "default",
-        "bank failure",
-        "conflict"
+        "ceasefire",
+        "military"
+
     ]
 
-    for word in risk_words:
+
+    for word in geopolitical_words:
 
         if word in text:
 
             impact += 1.5
+
             reasons.append(word)
 
+
+    # -----------------------------------------------------
+    # CRYPTO
+    # -----------------------------------------------------
 
     crypto_words = [
 
@@ -266,16 +483,24 @@ def analyze(article):
         "bitcoin etf",
         "crypto etf",
         "exchange hack",
-        "crypto regulation"
+        "crypto regulation",
+        "stablecoin"
+
     ]
+
 
     for word in crypto_words:
 
         if word in text:
 
             impact += 1.5
+
             reasons.append(word)
 
+
+    # -----------------------------------------------------
+    # ENERGY
+    # -----------------------------------------------------
 
     energy_words = [
 
@@ -283,103 +508,133 @@ def analyze(article):
         "opec",
         "brent",
         "wti"
+
     ]
+
 
     for word in energy_words:
 
         if word in text:
 
-            impact += 1
+            impact += 1.0
+
             reasons.append(word)
 
 
     impact = min(
         round(impact, 1),
-        10
+        10.0
     )
 
+
+    # =====================================================
+    # DIRECTION
+    # =====================================================
 
     direction = "NEUTRAL"
 
 
-    bullish = [
+    bullish_words = [
 
         "rate cut",
         "dovish",
         "inflation falls",
+        "inflation cools",
         "cool cpi",
         "bitcoin etf approval",
-        "crypto etf approval"
+        "crypto etf approval",
+        "ceasefire"
+
     ]
 
 
-    bearish = [
+    bearish_words = [
 
         "rate hike",
         "hawkish",
         "inflation rises",
         "hot cpi",
         "bitcoin etf rejection",
-        "exchange hack",
-        "crypto ban"
+        "crypto ban",
+        "exchange hack"
+
     ]
 
 
-    volatile = [
+    volatile_words = [
 
         "war",
         "attack",
         "invasion",
-        "crisis",
-        "bank failure"
+        "missile",
+        "bank failure",
+        "financial crisis"
+
     ]
 
 
     if any(
-        x in text
-        for x in volatile
+        word in text
+        for word in volatile_words
     ):
 
         direction = "VOLATILE"
 
+
     elif any(
-        x in text
-        for x in bullish
+        word in text
+        for word in bullish_words
     ):
 
         direction = "PUMP"
 
+
     elif any(
-        x in text
-        for x in bearish
+        word in text
+        for word in bearish_words
     ):
 
         direction = "DUMP"
 
 
+    # =====================================================
+    # CONFIDENCE
+    # =====================================================
+
     confidence = min(
+
         round(
-            50 + impact * 4.5,
+            50 +
+            impact * 4.5,
             1
         ),
-        95
+
+        95.0
+
     )
 
+
+    # =====================================================
+    # AFFECTED MARKETS
+    # =====================================================
 
     instruments = []
 
 
     if any(
-        x in text
-        for x in [
+        word in text
+        for word in [
 
             "fed",
             "fomc",
+            "ecb",
+            "boj",
             "cpi",
             "pce",
             "nfp",
             "inflation",
             "interest rate"
+
         ]
     ):
 
@@ -391,19 +646,22 @@ def analyze(article):
             "XAU/USD",
             "DXY",
             "BTC/USDT",
+            "ETH/USDT",
             "NASDAQ"
+
         ]
 
 
     if any(
-        x in text
-        for x in [
+        word in text
+        for word in [
 
             "bitcoin",
             "ethereum",
             "crypto",
-            "exchange",
-            "crypto etf"
+            "crypto etf",
+            "exchange hack"
+
         ]
     ):
 
@@ -411,17 +669,19 @@ def analyze(article):
 
             "BTC/USDT",
             "ETH/USDT"
+
         ]
 
 
     if any(
-        x in text
-        for x in [
+        word in text
+        for word in [
 
             "oil",
             "opec",
-            "wti",
-            "brent"
+            "brent",
+            "wti"
+
         ]
     ):
 
@@ -429,20 +689,43 @@ def analyze(article):
 
             "WTI",
             "CAD"
+
+        ]
+
+
+    if any(
+        word in text
+        for word in geopolitical_words
+    ):
+
+        instruments += [
+
+            "XAU/USD",
+            "USD/JPY",
+            "BTC/USDT"
+
         ]
 
 
     instruments = list(
-        dict.fromkeys(instruments)
+        dict.fromkeys(
+            instruments
+        )
     )
 
 
     if not instruments:
 
         instruments = (
-            CONFIG["watchlist"][:3]
+            CONFIG[
+                "watchlist"
+            ][:3]
         )
 
+
+    # =====================================================
+    # TIME HORIZON
+    # =====================================================
 
     if impact >= 8:
 
@@ -460,100 +743,129 @@ def analyze(article):
     return {
 
         "impact": impact,
+
         "direction": direction,
+
         "confidence": confidence,
-        "instruments": instruments,
-        "horizon": horizon,
-        "reasons": reasons
+
+        "instruments":
+        instruments,
+
+        "horizon":
+        horizon,
+
+        "reasons":
+        reasons
+
     }
 
 
-def send_telegram(message):
-
-    print("Sending Telegram message...")
-
-    url = (
-        "https://api.telegram.org/"
-        f"bot{TOKEN}/sendMessage"
-    )
-
-    data = urllib.parse.urlencode({
-
-        "chat_id": CHAT_ID,
-
-        "text": message,
-
-        "disable_web_page_preview": "true"
-
-    }).encode()
-
-
-    request = urllib.request.Request(
-
-        url,
-
-        data=data,
-
-        method="POST"
-    )
-
-
-    with urllib.request.urlopen(
-        request,
-        timeout=30
-    ) as response:
-
-        result = response.read().decode()
-
-        print(
-            "Telegram response:",
-            result
-        )
-
+# =========================================================
+# MAIN
+# =========================================================
 
 def main():
 
+    print("")
     print(
-        "=============================="
+        "================================"
     )
-    send_telegram(
-        "🟢 TEST MESSAGE\n\n"
-        "AI Market Radar is connected "
-        "successfully to Telegram.\n\n"
+    print(
+        "     AI MARKET RADAR STARTED"
+    )
+    print(
+        "================================"
+    )
+
+
+    # -----------------------------------------------------
+    # TELEGRAM TEST
+    # -----------------------------------------------------
+
+    test_message = (
+
+        "🟢 AI MARKET RADAR\n\n"
+
+        "Telegram connection test "
+        "successful.\n\n"
+
         "Bot: @notash_news_bot"
-    )
-    print(
-        "AI MARKET RADAR STARTED"
+
     )
 
-    print(
-        "=============================="
-    )
 
+    try:
+
+        send_telegram(
+            test_message
+        )
+
+        print(
+            "Telegram test: SUCCESS"
+        )
+
+
+    except Exception as error:
+
+        print(
+            "Telegram test: FAILED"
+        )
+
+        print(
+            error
+        )
+
+        raise
+
+
+    # -----------------------------------------------------
+    # LOAD STATE
+    # -----------------------------------------------------
 
     state = load_state()
 
-    alerts_sent = 0
+
     total_articles = 0
 
+    alerts_sent = 0
 
-    for feed in CONFIG["feeds"]:
+
+    # -----------------------------------------------------
+    # NEWS
+    # -----------------------------------------------------
+
+    for feed in CONFIG[
+        "feeds"
+    ]:
 
         try:
 
-            data = fetch(feed)
-
-            articles = parse_feed(data)
-
-            total_articles += len(
-                articles
+            data = fetch_feed(
+                feed
             )
+
+
+            articles = parse_feed(
+                data
+            )
+
+
+            total_articles += (
+                len(articles)
+            )
+
 
         except Exception as error:
 
             print(
-                "FEED ERROR:",
-                feed,
+                "FEED ERROR:"
+            )
+
+            print(
+                feed
+            )
+
+            print(
                 error
             )
 
@@ -562,57 +874,97 @@ def main():
 
         for article in articles:
 
-            uid = article_id(
-                article
+            article_id = (
+                get_article_id(
+                    article
+                )
             )
 
 
-            if uid in state["seen"]:
+            if article_id in (
+                state["seen"]
+            ):
 
                 continue
 
 
-            state["seen"].append(uid)
+            state["seen"].append(
+                article_id
+            )
 
 
-            result = analyze(
+            analysis = analyze(
                 article
             )
 
 
-            impact = result["impact"]
+            impact = analysis[
+                "impact"
+            ]
 
 
-            if impact < CONFIG[
+            threshold = CONFIG[
                 "impact_threshold"
-            ]:
+            ]
+
+
+            if impact < threshold:
 
                 continue
 
 
-            if alerts_sent >= CONFIG[
-                "max_alerts_per_run"
-            ]:
+            if alerts_sent >= (
+                CONFIG[
+                    "max_alerts_per_run"
+                ]
+            ):
 
                 break
 
 
-            if impact >= CONFIG[
-                "critical_threshold"
-            ]:
+            if impact >= (
+                CONFIG[
+                    "critical_threshold"
+                ]
+            ):
 
-                level = "🚨 CRITICAL"
+                level = (
+                    "🚨 CRITICAL"
+                )
+
 
             elif impact >= 7:
 
-                level = "⚡ HIGH IMPACT"
+                level = (
+                    "⚡ HIGH IMPACT"
+                )
+
 
             else:
 
-                level = "📰 MARKET NEWS"
+                level = (
+                    "📰 MARKET NEWS"
+                )
+
+
+            reasons = (
+                ", ".join(
+                    analysis[
+                        "reasons"
+                    ][:8]
+                )
+            )
+
+
+            if not reasons:
+
+                reasons = (
+                    "General market news"
+                )
 
 
             message = f"""
+
 {level}
 
 📰 {article["title"]}
@@ -621,25 +973,26 @@ def main():
 {impact}/10
 
 🎯 Direction:
-{result["direction"]}
+{analysis["direction"]}
 
 🧠 Confidence:
-{result["confidence"]}%
+{analysis["confidence"]}%
 
 ⏱ Horizon:
-{result["horizon"]}
+{analysis["horizon"]}
 
 💱 Affected Markets:
-{", ".join(result["instruments"])}
+{", ".join(analysis["instruments"])}
 
 🔎 Signals:
-{", ".join(result["reasons"][:8]) if result["reasons"] else "General market news"}
+{reasons}
 
 ⚠️ Analytical signal,
-not a guaranteed trade.
+not guaranteed financial advice.
 
 📰 Source:
 {article["link"]}
+
 """.strip()
 
 
@@ -649,26 +1002,42 @@ not a guaranteed trade.
                     message
                 )
 
+
                 alerts_sent += 1
 
+
                 print(
-                    "ALERT SENT:",
+                    "ALERT SENT:"
+                )
+
+                print(
                     article["title"]
                 )
+
 
             except Exception as error:
 
                 print(
-                    "TELEGRAM ERROR:",
+                    "TELEGRAM ERROR:"
+                )
+
+                print(
                     error
                 )
 
 
-    save_state(state)
+    # -----------------------------------------------------
+    # SAVE STATE
+    # -----------------------------------------------------
+
+    save_state(
+        state
+    )
 
 
+    print("")
     print(
-        "=============================="
+        "================================"
     )
 
     print(
@@ -682,7 +1051,7 @@ not a guaranteed trade.
     )
 
     print(
-        "=============================="
+        "================================"
     )
 
 
