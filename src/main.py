@@ -1671,61 +1671,205 @@ def fetch_metals_market():
     }
 
 
+```python
 # ============================================================
-# USD / IRR
+# USD / TOMAN - FREE MARKET
+# AUTOMATIC + FALLBACK
 # ============================================================
 
 def fetch_usd_irr():
+
+    print(
+        "Fetching USD free-market price..."
+    )
+
+    # --------------------------------------------------------
+    # SOURCE 1
+    # Navasan
+    #
+    # اگر API_KEY داشته باشیم از سرویس استفاده می‌کنیم.
+    # --------------------------------------------------------
+
+    navasan_api_key = os.getenv(
+        "NAVASAN_API_KEY",
+        ""
+    ).strip()
+
+    if navasan_api_key:
+
+        try:
+
+            url = (
+                "http://api.navasan.tech/"
+                "latest/?api_key="
+                + urllib.parse.quote(
+                    navasan_api_key
+                )
+            )
+
+            data = get_json(
+                url
+            )
+
+            # ساختارهای مختلف احتمالی API
+            dollar = data.get(
+                "usd"
+            )
+
+            if isinstance(
+                dollar,
+                dict
+            ):
+
+                price = safe_float(
+                    dollar.get("value")
+                    or dollar.get("price")
+                    or dollar.get("sell")
+                )
+
+                change = safe_float(
+                    dollar.get("change")
+                    or dollar.get("percent")
+                    or dollar.get("change_percent")
+                )
+
+            else:
+
+                price = safe_float(
+                    dollar
+                )
+
+                change = 0.0
+
+
+            # بعضی سرویس‌ها ریال می‌دهند
+            # بنابراین تبدیل ریال -> تومان
+
+            if price > 1000000:
+
+                price = price / 10
+
+
+            if price > 0:
+
+                print(
+                    "USD SOURCE: NAVASAN"
+                )
+
+                print(
+                    "USD PRICE:",
+                    f"{price:,.0f}",
+                    "Toman"
+                )
+
+                return {
+
+                    "price":
+                    price,
+
+                    "change":
+                    change,
+
+                    "source":
+                    "Navasan"
+
+                }
+
+        except Exception as error:
+
+            print(
+                "NAVASAN USD ERROR:",
+                error
+            )
+
+
+    # --------------------------------------------------------
+    # SOURCE 2
+    # Optional custom API
+    #
+    # اگر USD_IRR_API_URL قبلاً تنظیم شده باشد،
+    # همچنان از آن به عنوان fallback استفاده می‌کنیم.
+    # --------------------------------------------------------
 
     usd_api_url = os.getenv(
         "USD_IRR_API_URL",
         ""
     ).strip()
 
-    if not usd_api_url:
 
-        print(
-            "USD_IRR_API_URL missing"
-        )
+    if usd_api_url:
 
-        return {}
+        try:
 
-    try:
-
-        data = get_json(
-            usd_api_url
-        )
-
-        price = safe_float(
-            data.get(
-                "price"
+            data = get_json(
+                usd_api_url
             )
-        )
 
-        change = safe_float(
-            data.get(
-                "change_24h"
+
+            price = safe_float(
+                data.get(
+                    "price"
+                )
             )
-        )
 
-        return {
 
-            "price":
-            price,
+            change = safe_float(
+                data.get(
+                    "change_24h"
+                )
+            )
 
-            "change":
-            change
 
-        }
+            if price > 1000000:
 
-    except Exception as error:
+                price = price / 10
 
-        print(
-            "USD/IRR ERROR:",
-            error
-        )
 
-        return {}
+            if price > 0:
+
+                print(
+                    "USD SOURCE: CUSTOM API"
+                )
+
+                print(
+                    "USD PRICE:",
+                    f"{price:,.0f}",
+                    "Toman"
+                )
+
+                return {
+
+                    "price":
+                    price,
+
+                    "change":
+                    change,
+
+                    "source":
+                    "Custom API"
+
+                }
+
+
+        except Exception as error:
+
+            print(
+                "CUSTOM USD API ERROR:",
+                error
+            )
+
+
+    # --------------------------------------------------------
+    # NO DATA
+    # --------------------------------------------------------
+
+    print(
+        "USD FREE MARKET:"
+        " NO VALID SOURCE"
+    )
+
+    return {}
+```
 
 
 # ============================================================
