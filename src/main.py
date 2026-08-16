@@ -5,6 +5,7 @@ import html
 import hashlib
 import urllib.request
 import urllib.parse
+import urllib.error
 import xml.etree.ElementTree as ET
 
 
@@ -60,13 +61,11 @@ AI_MODEL = os.getenv(
 # ============================================================
 
 if not BOT_TOKEN:
-
     raise RuntimeError(
         "TELEGRAM_BOT_TOKEN is missing"
     )
 
 if not CHAT_ID:
-
     raise RuntimeError(
         "TELEGRAM_CHAT_ID is missing"
     )
@@ -76,12 +75,20 @@ if not CHAT_ID:
 # CONFIG
 # ============================================================
 
-with open(
-    "config.json",
-    encoding="utf-8"
-) as f:
+try:
 
-    CONFIG = json.load(f)
+    with open(
+        "config.json",
+        encoding="utf-8"
+    ) as f:
+
+        CONFIG = json.load(f)
+
+except Exception as error:
+
+    raise RuntimeError(
+        f"Unable to load config.json: {error}"
+    )
 
 
 WHALE_MIN_USD = float(
@@ -131,43 +138,114 @@ def clean_text(text):
     return text.strip()
 
 
-```python
+# ============================================================
+# TELEGRAM TARGET CLEANER
+# ============================================================
+
+def clean_telegram_target(target):
+
+    if not target:
+        return ""
+
+    target = str(target).strip()
+
+    target = (
+        target
+        .strip("\"'")
+        .replace("\r", "")
+        .replace("\n", "")
+        .strip()
+    )
+
+    # Convert accidental t.me/username format
+    if target.startswith(
+        "https://t.me/"
+    ):
+
+        target = (
+            "@"
+            + target.split(
+                "https://t.me/",
+                1
+            )[1].strip("/")
+        )
+
+    elif target.startswith(
+        "http://t.me/"
+    ):
+
+        target = (
+            "@"
+            + target.split(
+                "http://t.me/",
+                1
+            )[1].strip("/")
+        )
+
+    elif target.startswith(
+        "t.me/"
+    ):
+
+        target = (
+            "@"
+            + target.split(
+                "t.me/",
+                1
+            )[1].strip("/")
+        )
+
+    return target
+
+
 # ============================================================
 # TELEGRAM SEND
 # ============================================================
 
-def send_telegram(message, target, target_name="Telegram"):
+def send_telegram(
+    message,
+    target,
+    target_name="Telegram"
+):
+
+    target = clean_telegram_target(
+        target
+    )
 
     if not target:
+
         raise RuntimeError(
             f"{target_name}: target is empty"
         )
 
-    target = str(target).strip()
 
-    # Remove accidental quotes/spaces/newlines
-    target = target.strip("\"' ")
-    target = target.replace("\r", "").replace("\n", "")
+    if not message:
 
-    if not target:
         raise RuntimeError(
-            f"{target_name}: target became empty after cleaning"
+            f"{target_name}: message is empty"
         )
+
 
     url = (
         "https://api.telegram.org/"
         f"bot{BOT_TOKEN}/sendMessage"
     )
 
+
     data = urllib.parse.urlencode({
 
-        "chat_id": target,
+        "chat_id":
+        target,
 
-        "text": message,
+        "text":
+        message,
 
-        "disable_web_page_preview": "true"
+        "disable_web_page_preview":
+        "true"
 
-    }).encode("utf-8")
+    }).encode(
+        "utf-8"
+    )
+
 
     request = urllib.request.Request(
 
@@ -178,13 +256,17 @@ def send_telegram(message, target, target_name="Telegram"):
         method="POST",
 
         headers={
+
             "Content-Type":
-            "application/x-www-form-urlencoded; charset=UTF-8",
+            "application/x-www-form-urlencoded; "
+            "charset=UTF-8",
 
             "User-Agent":
             "AI-Market-Radar/2.0"
+
         }
     )
+
 
     try:
 
@@ -193,33 +275,48 @@ def send_telegram(message, target, target_name="Telegram"):
             timeout=30
         ) as response:
 
-            raw_response = response.read().decode(
-                "utf-8",
-                errors="replace"
+            raw_response = (
+                response
+                .read()
+                .decode(
+                    "utf-8",
+                    errors="replace"
+                )
             )
+
 
     except urllib.error.HTTPError as error:
 
         error_body = ""
 
         try:
-            error_body = error.read().decode(
-                "utf-8",
-                errors="replace"
+
+            error_body = (
+                error
+                .read()
+                .decode(
+                    "utf-8",
+                    errors="replace"
+                )
             )
+
         except Exception:
+
             pass
 
+
         raise RuntimeError(
-            f"{target_name} Telegram HTTP {error.code}: "
+            f"{target_name} Telegram "
+            f"HTTP {error.code}: "
             f"{error_body}"
         ) from error
+
 
     except Exception as error:
 
         raise RuntimeError(
-            f"{target_name} Telegram connection error: "
-            f"{error}"
+            f"{target_name} Telegram "
+            f"connection error: {error}"
         ) from error
 
 
@@ -232,17 +329,22 @@ def send_telegram(message, target, target_name="Telegram"):
     except json.JSONDecodeError:
 
         raise RuntimeError(
-            f"{target_name}: invalid Telegram response: "
+            f"{target_name}: invalid "
+            f"Telegram response: "
             f"{raw_response[:500]}"
         )
 
 
-    if not result.get("ok"):
+    if not result.get(
+        "ok"
+    ):
 
         raise RuntimeError(
-            f"{target_name}: Telegram API rejected message: "
+            f"{target_name}: Telegram API "
+            f"rejected message: "
             f"{result}"
         )
+
 
     return result
 
@@ -254,9 +356,17 @@ def send_telegram(message, target, target_name="Telegram"):
 def broadcast(message):
 
     print("")
-    print("================================")
-    print("TELEGRAM BROADCAST")
-    print("================================")
+    print(
+        "================================"
+    )
+
+    print(
+        "TELEGRAM BROADCAST"
+    )
+
+    print(
+        "================================"
+    )
 
 
     # --------------------------------------------------------
@@ -266,30 +376,43 @@ def broadcast(message):
     try:
 
         result = send_telegram(
+
             message,
+
             CHAT_ID,
+
             "Personal Chat"
+
         )
 
-        print(
-            "✅ Personal Chat: MESSAGE SENT"
-        )
 
-        print(
-            "Telegram message_id:",
-            result.get(
+        message_id = (
+            result
+            .get(
                 "result",
                 {}
-            ).get(
+            )
+            .get(
                 "message_id",
                 "unknown"
             )
         )
 
+
+        print(
+            "PERSONAL CHAT: OK"
+        )
+
+        print(
+            "Personal message_id:",
+            message_id
+        )
+
+
     except Exception as error:
 
         print(
-            "❌ Personal Chat ERROR:"
+            "PERSONAL CHAT ERROR:"
         )
 
         print(
@@ -304,21 +427,24 @@ def broadcast(message):
     if not CHANNEL_ID:
 
         print(
-            "❌ Channel: TELEGRAM_CHANNEL_ID is empty"
+            "CHANNEL: NOT CONFIGURED"
+        )
+
+        print(
+            "TELEGRAM_CHANNEL_ID is empty"
+        )
+
+        print(
+            "================================"
         )
 
         return
 
 
-    channel_target = str(
-        CHANNEL_ID
-    ).strip()
-
     channel_target = (
-        channel_target
-        .strip("\"' ")
-        .replace("\r", "")
-        .replace("\n", "")
+        clean_telegram_target(
+            CHANNEL_ID
+        )
     )
 
 
@@ -331,93 +457,53 @@ def broadcast(message):
     try:
 
         result = send_telegram(
+
             message,
+
             channel_target,
+
             "Channel"
+
         )
 
-        print(
-            "✅ Channel: MESSAGE SENT"
-        )
 
-        print(
-            "Channel message_id:",
-            result.get(
+        message_id = (
+            result
+            .get(
                 "result",
                 {}
-            ).get(
+            )
+            .get(
                 "message_id",
                 "unknown"
             )
         )
 
+
+        print(
+            "CHANNEL: OK"
+        )
+
+        print(
+            "Channel message_id:",
+            message_id
+        )
+
+
     except Exception as error:
 
         print(
-            "❌ Channel ERROR:"
+            "CHANNEL ERROR:"
         )
 
         print(
             error
         )
+
 
     print(
         "================================"
     )
-```
-    # --------------------------------------------------------
-    # PERSONAL CHAT
-    # --------------------------------------------------------
-
-    try:
-
-        send_telegram(
-            message,
-            CHAT_ID
-        )
-
-        print(
-            "Telegram personal chat: OK"
-        )
-
-    except Exception as error:
-
-        print(
-            "Telegram personal chat ERROR:",
-            error
-        )
-
-
-    # --------------------------------------------------------
-    # CHANNEL
-    # --------------------------------------------------------
-
-    if not CHANNEL_ID:
-
-        print(
-            "Telegram channel: NOT CONFIGURED"
-        )
-
-        return
-
-
-    try:
-
-        send_telegram(
-            message,
-            CHANNEL_ID
-        )
-
-        print(
-            "Telegram channel: OK"
-        )
-
-    except Exception as error:
-
-        print(
-            "Telegram channel ERROR:",
-            error
-        )
 
 
 # ============================================================
@@ -434,13 +520,18 @@ def fetch_url(url):
 
             "User-Agent":
             "Mozilla/5.0 "
-            "(compatible; AI-Market-Radar/1.0)",
+            "(compatible; AI-Market-Radar/2.0)",
 
             "Accept":
             "application/rss+xml, "
-            "application/xml, text/xml, */*"
+            "application/xml, "
+            "text/xml, "
+            "application/json, "
+            "*/*"
+
         }
     )
+
 
     with urllib.request.urlopen(
         request,
@@ -465,6 +556,7 @@ def parse_rss(
 
     articles = []
 
+
     for item in root.findall(
         ".//item"
     ):
@@ -475,6 +567,7 @@ def parse_rss(
             )
         )
 
+
         link = (
             item.findtext(
                 "link"
@@ -482,15 +575,18 @@ def parse_rss(
             or ""
         ).strip()
 
+
         description = clean_text(
             item.findtext(
                 "description"
             )
         )
 
+
         if not title:
 
             continue
+
 
         articles.append({
 
@@ -505,7 +601,9 @@ def parse_rss(
 
             "source":
             source
+
         })
+
 
     return articles
 
@@ -527,11 +625,14 @@ def load_state():
                 f
             )
 
+
         if "seen" not in state:
 
             state["seen"] = []
 
+
         return state
+
 
     except Exception:
 
@@ -548,6 +649,7 @@ def save_state(state):
             []
         )
     )[-5000:]
+
 
     with open(
         "state.json",
@@ -647,13 +749,16 @@ def calculate_score(
 
     ).lower()
 
+
     score = 0
+
 
     for keyword, weight in KEYWORDS.items():
 
         if keyword in text:
 
             score += weight
+
 
     return min(
         10,
@@ -679,6 +784,7 @@ def ai_analyze(
 
         return None
 
+
     if InferenceClient is None:
 
         print(
@@ -702,7 +808,9 @@ def ai_analyze(
 امتیاز اولیه:
 {score}/10
 
-لطفاً تحلیل کاملاً فارسی و ساده ارائه بده.
+لطفاً تحلیل کاملاً فارسی،
+روان و قابل فهم برای افراد
+غیرمسلط به زبان انگلیسی ارائه بده.
 
 ساختار پاسخ:
 
@@ -710,7 +818,7 @@ def ai_analyze(
 
 🎯 چرا مهم است؟
 
-📈 اثر احتمالی روی BTC
+📈 اثر احتمالی روی بیت‌کوین BTC
 
 💵 اثر احتمالی روی دلار
 
@@ -741,6 +849,7 @@ def ai_analyze(
             provider="auto",
 
             api_key=HF_TOKEN
+
         )
 
 
@@ -757,9 +866,10 @@ def ai_analyze(
 
                     "content":
                     "تو تحلیلگر حرفه‌ای "
-                    "بازارهای مالی هستی و "
-                    "باید فارسی، واضح و "
-                    "مسئولانه پاسخ بدهی."
+                    "بازارهای مالی هستی. "
+                    "باید فارسی، واضح، "
+                    "ساده و مسئولانه "
+                    "پاسخ بدهی."
 
                 },
 
@@ -770,6 +880,7 @@ def ai_analyze(
 
                     "content":
                     prompt
+
                 }
 
             ],
@@ -777,6 +888,7 @@ def ai_analyze(
             temperature=0.1,
 
             max_tokens=1200
+
         )
 
 
@@ -841,7 +953,6 @@ def build_news_message(
 
 
     return f"""
-
 ━━━━━━━━━━━━━━━━━━━━
 🤖 AI MARKET RADAR
 {level}
@@ -884,8 +995,7 @@ def fetch_whale_alerts():
     if not WHALE_ALERT_API_KEY:
 
         print(
-            "WHALE_ALERT_API_KEY "
-            "missing"
+            "WHALE_ALERT_API_KEY missing"
         )
 
         return []
@@ -909,6 +1019,7 @@ def fetch_whale_alerts():
 
         "limit":
         WHALE_MAX_PER_RUN
+
     }
 
 
@@ -929,8 +1040,11 @@ def fetch_whale_alerts():
             full_url
         )
 
+
         data = json.loads(
-            raw.decode()
+            raw.decode(
+                "utf-8"
+            )
         )
 
 
@@ -939,7 +1053,10 @@ def fetch_whale_alerts():
         ) != "success":
 
             print(
-                "WHALE ALERT API:",
+                "WHALE ALERT API:"
+            )
+
+            print(
                 data
             )
 
@@ -1125,7 +1242,6 @@ def format_whale_alert(
 
 
     return f"""
-
 ━━━━━━━━━━━━━━━━━━━━
 🐋 WHALE ALERT
 {level}
@@ -1197,6 +1313,60 @@ def main():
     )
 
 
+    print(
+        "Telegram personal target:",
+        CHAT_ID
+    )
+
+
+    if CHANNEL_ID:
+
+        print(
+            "Telegram channel target:",
+            clean_telegram_target(
+                CHANNEL_ID
+            )
+        )
+
+    else:
+
+        print(
+            "Telegram channel target: "
+            "NOT CONFIGURED"
+        )
+
+
+    if HF_TOKEN:
+
+        print(
+            "AI: ENABLED"
+        )
+
+    else:
+
+        print(
+            "AI: FALLBACK MODE"
+        )
+
+
+    if WHALE_ALERT_API_KEY:
+
+        print(
+            "Whale Alert API: ENABLED"
+        )
+
+    else:
+
+        print(
+            "Whale Alert API: DISABLED"
+        )
+
+
+    print(
+        "================================"
+    )
+
+
     state = load_state()
 
 
@@ -1218,7 +1388,6 @@ def main():
         []
     ):
 
-
         try:
 
             data = fetch_url(
@@ -1236,35 +1405,23 @@ def main():
 
 
             print(
-
                 "Articles:",
-
-                len(
-                    articles
-                ),
-
+                len(articles),
                 "|",
-
                 feed["name"]
-
             )
 
 
         except Exception as error:
 
             print(
-
                 "FEED ERROR:",
-
                 feed.get(
                     "name",
                     "Unknown"
                 ),
-
                 "|",
-
                 error
-
             )
 
             continue
@@ -1276,7 +1433,6 @@ def main():
 
 
         for article in articles:
-
 
             identifier = make_id(
 
@@ -1314,11 +1470,8 @@ def main():
             if score < float(
 
                 CONFIG.get(
-
                     "news_min_score",
-
                     3.5
-
                 )
 
             ):
@@ -1338,28 +1491,18 @@ def main():
             if score >= float(
 
                 CONFIG.get(
-
                     "alert_min_score",
-
                     5.5
-
                 )
 
             ):
 
-
                 message = (
-
                     build_news_message(
-
                         article,
-
                         score,
-
                         analysis
-
                     )
-
                 )
 
 
@@ -1374,11 +1517,8 @@ def main():
                 if news_alerts >= int(
 
                     CONFIG.get(
-
                         "max_alerts_per_run",
-
                         8
-
                     )
 
                 ):
@@ -1391,21 +1531,15 @@ def main():
     # ========================================================
 
     whale_transactions = (
-
         fetch_whale_alerts()
-
     )
 
 
     for tx in whale_transactions:
 
-
         tx_hash = tx.get(
-
             "hash",
-
             ""
-
         )
 
 
@@ -1417,7 +1551,6 @@ def main():
         identifier = make_id(
 
             "WHALE|"
-
             + tx_hash
 
         )
@@ -1438,11 +1571,9 @@ def main():
 
 
         message = (
-
             format_whale_alert(
                 tx
             )
-
         )
 
 
@@ -1455,16 +1586,14 @@ def main():
 
 
         if whale_alerts >= (
-
             WHALE_MAX_PER_RUN
-
         ):
 
             break
 
 
     # ========================================================
-    # SAVE
+    # SAVE STATE
     # ========================================================
 
     save_state(
