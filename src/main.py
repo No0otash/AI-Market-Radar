@@ -131,24 +131,28 @@ def clean_text(text):
     return text.strip()
 
 
+```python
 # ============================================================
 # TELEGRAM SEND
 # ============================================================
 
-def send_telegram(
-    message,
-    target
-):
+def send_telegram(message, target, target_name="Telegram"):
 
     if not target:
-
         raise RuntimeError(
-            "Telegram target is empty"
+            f"{target_name}: target is empty"
         )
 
-    target = str(
-        target
-    ).strip()
+    target = str(target).strip()
+
+    # Remove accidental quotes/spaces/newlines
+    target = target.strip("\"' ")
+    target = target.replace("\r", "").replace("\n", "")
+
+    if not target:
+        raise RuntimeError(
+            f"{target_name}: target became empty after cleaning"
+        )
 
     url = (
         "https://api.telegram.org/"
@@ -161,10 +165,9 @@ def send_telegram(
 
         "text": message,
 
-        "disable_web_page_preview":
-        "true"
+        "disable_web_page_preview": "true"
 
-    }).encode()
+    }).encode("utf-8")
 
     request = urllib.request.Request(
 
@@ -176,26 +179,69 @@ def send_telegram(
 
         headers={
             "Content-Type":
-            "application/x-www-form-urlencoded",
+            "application/x-www-form-urlencoded; charset=UTF-8",
 
             "User-Agent":
-            "AI-Market-Radar/1.0"
+            "AI-Market-Radar/2.0"
         }
     )
 
-    with urllib.request.urlopen(
-        request,
-        timeout=30
-    ) as response:
+    try:
+
+        with urllib.request.urlopen(
+            request,
+            timeout=30
+        ) as response:
+
+            raw_response = response.read().decode(
+                "utf-8",
+                errors="replace"
+            )
+
+    except urllib.error.HTTPError as error:
+
+        error_body = ""
+
+        try:
+            error_body = error.read().decode(
+                "utf-8",
+                errors="replace"
+            )
+        except Exception:
+            pass
+
+        raise RuntimeError(
+            f"{target_name} Telegram HTTP {error.code}: "
+            f"{error_body}"
+        ) from error
+
+    except Exception as error:
+
+        raise RuntimeError(
+            f"{target_name} Telegram connection error: "
+            f"{error}"
+        ) from error
+
+
+    try:
 
         result = json.loads(
-            response.read().decode()
+            raw_response
         )
+
+    except json.JSONDecodeError:
+
+        raise RuntimeError(
+            f"{target_name}: invalid Telegram response: "
+            f"{raw_response[:500]}"
+        )
+
 
     if not result.get("ok"):
 
         raise RuntimeError(
-            f"Telegram API error: {result}"
+            f"{target_name}: Telegram API rejected message: "
+            f"{result}"
         )
 
     return result
@@ -207,6 +253,118 @@ def send_telegram(
 
 def broadcast(message):
 
+    print("")
+    print("================================")
+    print("TELEGRAM BROADCAST")
+    print("================================")
+
+
+    # --------------------------------------------------------
+    # PERSONAL CHAT
+    # --------------------------------------------------------
+
+    try:
+
+        result = send_telegram(
+            message,
+            CHAT_ID,
+            "Personal Chat"
+        )
+
+        print(
+            "✅ Personal Chat: MESSAGE SENT"
+        )
+
+        print(
+            "Telegram message_id:",
+            result.get(
+                "result",
+                {}
+            ).get(
+                "message_id",
+                "unknown"
+            )
+        )
+
+    except Exception as error:
+
+        print(
+            "❌ Personal Chat ERROR:"
+        )
+
+        print(
+            error
+        )
+
+
+    # --------------------------------------------------------
+    # CHANNEL
+    # --------------------------------------------------------
+
+    if not CHANNEL_ID:
+
+        print(
+            "❌ Channel: TELEGRAM_CHANNEL_ID is empty"
+        )
+
+        return
+
+
+    channel_target = str(
+        CHANNEL_ID
+    ).strip()
+
+    channel_target = (
+        channel_target
+        .strip("\"' ")
+        .replace("\r", "")
+        .replace("\n", "")
+    )
+
+
+    print(
+        "Channel target:",
+        channel_target
+    )
+
+
+    try:
+
+        result = send_telegram(
+            message,
+            channel_target,
+            "Channel"
+        )
+
+        print(
+            "✅ Channel: MESSAGE SENT"
+        )
+
+        print(
+            "Channel message_id:",
+            result.get(
+                "result",
+                {}
+            ).get(
+                "message_id",
+                "unknown"
+            )
+        )
+
+    except Exception as error:
+
+        print(
+            "❌ Channel ERROR:"
+        )
+
+        print(
+            error
+        )
+
+    print(
+        "================================"
+    )
+```
     # --------------------------------------------------------
     # PERSONAL CHAT
     # --------------------------------------------------------
