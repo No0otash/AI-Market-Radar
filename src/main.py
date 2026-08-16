@@ -1670,8 +1670,6 @@ def fetch_metals_market():
 
     }
 
-
-```python
 # ============================================================
 # USD / TOMAN - FREE MARKET
 # AUTOMATIC + FALLBACK
