@@ -9,8 +9,8 @@ import xml.etree.ElementTree as ET
 
 
 # ============================================================
-# AI MARKET RADAR
-# Persian-First Trading Intelligence Engine
+# AI MARKET RADAR v5
+# Persian-First Market & Whale Intelligence
 # ============================================================
 
 try:
@@ -40,27 +40,37 @@ AI_MODEL = os.getenv(
 # ============================================================
 
 if not BOT_TOKEN:
-    raise RuntimeError("TELEGRAM_BOT_TOKEN is missing")
+    raise RuntimeError(
+        "TELEGRAM_BOT_TOKEN is missing"
+    )
 
 if not CHAT_ID:
-    raise RuntimeError("TELEGRAM_CHAT_ID is missing")
+    raise RuntimeError(
+        "TELEGRAM_CHAT_ID is missing"
+    )
 
 
 # ============================================================
 # CONFIG
 # ============================================================
 
-with open("config.json", encoding="utf-8") as f:
+with open(
+    "config.json",
+    encoding="utf-8"
+) as f:
+
     CONFIG = json.load(f)
 
 
 # ============================================================
-# TEXT HELPERS
+# TEXT
 # ============================================================
 
 def clean_text(text):
 
-    text = html.unescape(text or "")
+    text = html.unescape(
+        text or ""
+    )
 
     text = re.sub(
         r"<[^>]+>",
@@ -81,7 +91,10 @@ def clean_text(text):
 # TELEGRAM
 # ============================================================
 
-def send_telegram(message, target):
+def send_telegram(
+    message,
+    target
+):
 
     if not target:
         return
@@ -93,11 +106,14 @@ def send_telegram(message, target):
 
     payload = urllib.parse.urlencode({
 
-        "chat_id": target,
+        "chat_id":
+        target,
 
-        "text": message,
+        "text":
+        message,
 
-        "disable_web_page_preview": "true"
+        "disable_web_page_preview":
+        "true"
 
     }).encode()
 
@@ -134,13 +150,13 @@ def send_telegram(message, target):
 
 def broadcast(message):
 
-    # Personal Telegram
+    # ارسال به چت شخصی
     send_telegram(
         message,
         CHAT_ID
     )
 
-    # Personal channel
+    # ارسال به کانال
     if CHANNEL_ID:
 
         send_telegram(
@@ -178,13 +194,20 @@ def fetch_url(url):
 # RSS
 # ============================================================
 
-def parse_rss(data, source):
+def parse_rss(
+    data,
+    source
+):
 
-    root = ET.fromstring(data)
+    root = ET.fromstring(
+        data
+    )
 
     articles = []
 
-    for item in root.findall(".//item"):
+    for item in root.findall(
+        ".//item"
+    ):
 
         title = clean_text(
             item.findtext("title")
@@ -196,11 +219,15 @@ def parse_rss(data, source):
         ).strip()
 
         description = clean_text(
-            item.findtext("description")
+            item.findtext(
+                "description"
+            )
         )
 
         published = clean_text(
-            item.findtext("pubDate")
+            item.findtext(
+                "pubDate"
+            )
         )
 
         if not title or not link:
@@ -208,15 +235,20 @@ def parse_rss(data, source):
 
         articles.append({
 
-            "title": title,
+            "title":
+            title,
 
-            "link": link,
+            "link":
+            link,
 
-            "description": description,
+            "description":
+            description,
 
-            "published": published,
+            "published":
+            published,
 
-            "source": source
+            "source":
+            source
 
         })
 
@@ -238,7 +270,11 @@ def load_state():
 
             state = json.load(f)
 
-            if isinstance(state, dict):
+            if isinstance(
+                state,
+                dict
+            ):
+
                 return state
 
     except Exception:
@@ -252,7 +288,10 @@ def load_state():
 def save_state(state):
 
     state["seen"] = (
-        state.get("seen", [])
+        state.get(
+            "seen",
+            []
+        )
     )[-5000:]
 
     with open(
@@ -273,14 +312,14 @@ def save_state(state):
 # DUPLICATE DETECTION
 # ============================================================
 
-def article_id(article):
+def article_id(
+    article
+):
 
     raw = (
-
         article["title"]
         + "|"
         + article["link"]
-
     )
 
     return hashlib.sha256(
@@ -289,7 +328,7 @@ def article_id(article):
 
 
 # ============================================================
-# MARKET IMPORTANCE ENGINE
+# NEWS IMPORTANCE ENGINE
 # ============================================================
 
 KEYWORDS = {
@@ -365,14 +404,14 @@ KEYWORDS = {
 }
 
 
-def calculate_importance(article):
+def calculate_importance(
+    article
+):
 
     text = (
-
         article["title"]
         + " "
         + article["description"]
-
     ).lower()
 
     total = 0
@@ -390,7 +429,7 @@ def calculate_importance(article):
 
 
 # ============================================================
-# LEVEL SYSTEM
+# ALERT LEVEL
 # ============================================================
 
 def get_level(score):
@@ -419,36 +458,78 @@ def get_level(score):
 
 
 # ============================================================
+# DIRECTION
+# ============================================================
+
+def direction_fa(
+    value
+):
+
+    directions = {
+
+        "BULLISH":
+        "🟢 صعودی",
+
+        "BEARISH":
+        "🔴 نزولی",
+
+        "VOLATILE":
+        "🟡 نوسانی",
+
+        "NEUTRAL":
+        "⚪ خنثی"
+
+    }
+
+    return directions.get(
+        str(value).upper(),
+        "⚪ خنثی"
+    )
+
+
+# ============================================================
 # AI SCHEMA
 # ============================================================
 
 AI_SCHEMA = {
 
-    "type": "object",
+    "type":
+    "object",
 
     "properties": {
 
-        "title_fa": {
-            "type": "string"
+        "title_fa":
+        {
+            "type":
+            "string"
         },
 
-        "simple_summary": {
-            "type": "string"
+        "simple_summary":
+        {
+            "type":
+            "string"
         },
 
-        "impact": {
-            "type": "number"
+        "impact":
+        {
+            "type":
+            "number"
         },
 
-        "confidence": {
-            "type": "number"
+        "confidence":
+        {
+            "type":
+            "number"
         },
 
-        "direction": {
+        "direction":
+        {
 
-            "type": "string",
+            "type":
+            "string",
 
-            "enum": [
+            "enum":
+            [
                 "BULLISH",
                 "BEARISH",
                 "VOLATILE",
@@ -457,41 +538,58 @@ AI_SCHEMA = {
 
         },
 
-        "horizon": {
-            "type": "string"
+        "horizon":
+        {
+            "type":
+            "string"
         },
 
-        "why": {
-            "type": "string"
+        "why":
+        {
+            "type":
+            "string"
         },
 
-        "watch": {
-            "type": "string"
+        "watch":
+        {
+            "type":
+            "string"
         },
 
-        "invalidation": {
-            "type": "string"
+        "invalidation":
+        {
+            "type":
+            "string"
         },
 
-        "forex": {
-            "type": "string"
+        "forex":
+        {
+            "type":
+            "string"
         },
 
-        "crypto": {
-            "type": "string"
+        "crypto":
+        {
+            "type":
+            "string"
         },
 
-        "commodities": {
-            "type": "string"
+        "commodities":
+        {
+            "type":
+            "string"
         },
 
-        "indices": {
-            "type": "string"
+        "indices":
+        {
+            "type":
+            "string"
         }
 
     },
 
-    "required": [
+    "required":
+    [
 
         "title_fa",
         "simple_summary",
@@ -516,7 +614,10 @@ AI_SCHEMA = {
 # AI ANALYST
 # ============================================================
 
-def ai_analyze(article, base_score):
+def ai_analyze(
+    article,
+    base_score
+):
 
     if not HF_TOKEN:
         return None
@@ -544,7 +645,7 @@ def ai_analyze(article, base_score):
 امتیاز اولیه:
 {base_score}/10
 
-این خبر را برای معامله‌گر تحلیل کن.
+خبر را تحلیل کن.
 
 بازارهای زیر را بررسی کن:
 
@@ -572,20 +673,20 @@ BEARISH
 VOLATILE
 NEUTRAL
 
-حتماً مشخص کن:
+همچنین مشخص کن:
 
-1. چرا خبر مهم است؟
-2. معنی ساده آن چیست؟
-3. اثر احتمالی روی بازار چیست؟
-4. معامله‌گر چه چیزی را زیر نظر بگیرد؟
-5. چه چیزی این سناریو را باطل می‌کند؟
-6. شدت اثر از 0 تا 10
-7. میزان اطمینان از 0 تا 100
-8. بازه زمانی اثر
+- چرا خبر مهم است؟
+- معنی ساده خبر چیست؟
+- اثر احتمالی روی بازار چیست؟
+- معامله‌گر چه چیزی را زیر نظر بگیرد؟
+- چه چیزی سناریو را باطل می‌کند؟
+- شدت اثر از 0 تا 10
+- میزان اطمینان از 0 تا 100
+- بازه زمانی اثر
 
-هیچ‌وقت اثر احتمالی را قطعی معرفی نکن.
+اثر احتمالی را هیچ‌وقت قطعی معرفی نکن.
 
-همه توضیحات را فارسی بنویس.
+همه توضیحات فارسی باشند.
 
 """
 
@@ -608,20 +709,25 @@ NEUTRAL
 
                 {
 
-                    "role": "system",
+                    "role":
+                    "system",
 
                     "content":
-                    "تو یک تحلیلگر حرفه‌ای "
-                    "بازار مالی فارسی‌زبان هستی. "
-                    "اطلاعات ساختگی تولید نکن."
+                    (
+                        "تو یک تحلیلگر حرفه‌ای "
+                        "بازار مالی فارسی‌زبان هستی. "
+                        "اطلاعات ساختگی تولید نکن."
+                    )
 
                 },
 
                 {
 
-                    "role": "user",
+                    "role":
+                    "user",
 
-                    "content": prompt
+                    "content":
+                    prompt
 
                 }
 
@@ -629,7 +735,8 @@ NEUTRAL
 
             response_format={
 
-                "type": "json_schema",
+                "type":
+                "json_schema",
 
                 "json_schema": {
 
@@ -639,7 +746,8 @@ NEUTRAL
                     "schema":
                     AI_SCHEMA,
 
-                    "strict": True
+                    "strict":
+                    True
 
                 }
 
@@ -671,19 +779,13 @@ NEUTRAL
 
 
 # ============================================================
-# FALLBACK ANALYSIS
+# FALLBACK
 # ============================================================
 
 def fallback_analysis(
     article,
     score
 ):
-
-    direction = (
-        "VOLATILE"
-        if score >= 7
-        else "NEUTRAL"
-    )
 
     return {
 
@@ -707,29 +809,33 @@ def fallback_analysis(
         ),
 
         "direction":
-        direction,
+        (
+            "VOLATILE"
+            if score >= 7
+            else "NEUTRAL"
+        ),
 
         "horizon":
         "کوتاه‌مدت",
 
         "why":
         (
-            "موتور رادار این خبر را "
-            "به دلیل ارتباط آن با "
-            "بازارهای مالی مهم تشخیص داده است."
+            "این خبر به دلیل ارتباط "
+            "با بازارهای مالی مهم "
+            "توسط موتور رادار شناسایی شده است."
         ),
 
         "watch":
         (
-            "DXY، بازده اوراق، "
-            "BTC، NASDAQ و حجم معاملات"
+            "DXY، بازده اوراق، BTC، "
+            "NASDAQ و حجم معاملات"
         ),
 
         "invalidation":
         (
-            "اگر واکنش واقعی قیمت "
-            "برخلاف سناریو باشد، "
-            "اعتبار تحلیل کاهش می‌یابد."
+            "واکنش معکوس قیمت یا "
+            "تکذیب خبر می‌تواند سناریو "
+            "را ضعیف کند."
         ),
 
         "forex":
@@ -745,34 +851,6 @@ def fallback_analysis(
         "🟡 نوسانی"
 
     }
-
-
-# ============================================================
-# TRANSLATION OF DIRECTION
-# ============================================================
-
-def direction_fa(value):
-
-    directions = {
-
-        "BULLISH":
-        "🟢 صعودی",
-
-        "BEARISH":
-        "🔴 نزولی",
-
-        "VOLATILE":
-        "🟡 نوسانی",
-
-        "NEUTRAL":
-        "⚪ خنثی"
-
-    }
-
-    return directions.get(
-        str(value).upper(),
-        "⚪ خنثی"
-    )
 
 
 # ============================================================
@@ -871,6 +949,342 @@ def build_news_message(
 
 
 # ============================================================
+# WHALE INTELLIGENCE
+# ============================================================
+
+WHALE_MIN_USD = float(
+    CONFIG.get(
+        "whale_min_usd",
+        10000000
+    )
+)
+
+WHALE_L2_USD = float(
+    CONFIG.get(
+        "whale_l2_usd",
+        50000000
+    )
+)
+
+
+def whale_level(
+    value_usd
+):
+
+    if value_usd >= WHALE_L2_USD:
+
+        return (
+            "🔴",
+            "سطح ۲",
+            "هشدار نهنگ"
+        )
+
+    if value_usd >= WHALE_MIN_USD:
+
+        return (
+            "🟡",
+            "سطح ۱",
+            "فعالیت مهم نهنگ"
+        )
+
+    return None
+
+
+def whale_direction(
+    transaction
+):
+
+    direction = str(
+        transaction.get(
+            "direction",
+            ""
+        )
+    ).lower()
+
+    if direction in [
+        "exchange_in",
+        "deposit"
+    ]:
+
+        return (
+            "🔴",
+            "ورود به صرافی",
+            "احتمال افزایش فشار فروش"
+        )
+
+    if direction in [
+        "exchange_out",
+        "withdrawal"
+    ]:
+
+        return (
+            "🟢",
+            "خروج از صرافی",
+            "احتمال کاهش فشار فروش"
+        )
+
+    return (
+        "🟡",
+        "انتقال بین کیف‌پول‌ها",
+        "جهت معامله مشخص نیست"
+    )
+
+
+def build_whale_message(
+    transaction
+):
+
+    value_usd = float(
+        transaction.get(
+            "value_usd",
+            0
+        ) or 0
+    )
+
+    level_data = whale_level(
+        value_usd
+    )
+
+    if not level_data:
+        return None
+
+    icon, level, label = level_data
+
+    (
+        direction_icon,
+        direction_name,
+        direction_meaning
+    ) = whale_direction(
+        transaction
+    )
+
+    symbol = transaction.get(
+        "symbol",
+        "نامشخص"
+    )
+
+    amount = transaction.get(
+        "amount",
+        "نامشخص"
+    )
+
+    owner = transaction.get(
+        "owner",
+        "نهنگ ناشناس"
+    )
+
+    from_owner = transaction.get(
+        "from_owner",
+        "نامشخص"
+    )
+
+    to_owner = transaction.get(
+        "to_owner",
+        "نامشخص"
+    )
+
+    tx_hash = transaction.get(
+        "tx_hash",
+        ""
+    )
+
+    return f"""
+
+━━━━━━━━━━━━━━━━━━━━
+🐋 {icon} {level} | {label}
+━━━━━━━━━━━━━━━━━━━━
+
+👤 نهنگ:
+
+{owner}
+
+━━━━━━━━━━━━━━━━━━━━
+
+💰 دارایی:
+
+{symbol}
+
+🔢 مقدار:
+
+{amount}
+
+💵 ارزش تقریبی:
+
+${value_usd:,.0f}
+
+━━━━━━━━━━━━━━━━━━━━
+🔄 مسیر تراکنش
+━━━━━━━━━━━━━━━━━━━━
+
+📤 مبدأ:
+
+{from_owner}
+
+📥 مقصد:
+
+{to_owner}
+
+━━━━━━━━━━━━━━━━━━━━
+📊 برداشت اولیه رادار
+━━━━━━━━━━━━━━━━━━━━
+
+{direction_icon} وضعیت:
+
+{direction_name}
+
+🧠 معنی ساده:
+
+{direction_meaning}
+
+━━━━━━━━━━━━━━━━━━━━
+🧠 تحلیل AI
+━━━━━━━━━━━━━━━━━━━━
+
+این انتقال به دلیل حجم بالا
+توسط سیستم Whale Intelligence
+شناسایی شده است.
+
+⚠️ انتقال بزرگ به‌تنهایی
+به معنی خرید یا فروش قطعی نیست.
+
+جهت واقعی باید با:
+
+قیمت
+حجم معاملات
+جریان صرافی‌ها
+و رفتار بازار
+
+تأیید شود.
+
+━━━━━━━━━━━━━━━━━━━━
+
+🔗 TX:
+
+{tx_hash}
+
+⚠️ هشدار نهنگ، سیگنال قطعی
+خرید یا فروش نیست.
+"""
+
+
+# ============================================================
+# WHALE FEED
+# ============================================================
+
+def process_whale_feed(
+    state
+):
+
+    feed_url = CONFIG.get(
+        "whale_feed_url",
+        ""
+    ).strip()
+
+    if not feed_url:
+
+        print(
+            "Whale feed: not configured"
+        )
+
+        return 0
+
+    try:
+
+        raw = fetch_url(
+            feed_url
+        )
+
+        data = json.loads(
+            raw.decode()
+        )
+
+    except Exception as error:
+
+        print(
+            "WHALE FEED ERROR:",
+            error
+        )
+
+        return 0
+
+    if isinstance(
+        data,
+        list
+    ):
+
+        transactions = data
+
+    else:
+
+        transactions = data.get(
+            "transactions",
+            []
+        )
+
+    sent = 0
+
+    maximum = int(
+        CONFIG.get(
+            "whale_max_per_run",
+            5
+        )
+    )
+
+    for transaction in transactions:
+
+        if sent >= maximum:
+            break
+
+        transaction_id = hashlib.sha256(
+
+            json.dumps(
+                transaction,
+                sort_keys=True
+            ).encode()
+
+        ).hexdigest()
+
+        if transaction_id in state["seen"]:
+
+            continue
+
+        value = float(
+            transaction.get(
+                "value_usd",
+                0
+            ) or 0
+        )
+
+        if value < WHALE_MIN_USD:
+
+            state["seen"].append(
+                transaction_id
+            )
+
+            continue
+
+        message = build_whale_message(
+            transaction
+        )
+
+        if not message:
+
+            continue
+
+        broadcast(
+            message
+        )
+
+        state["seen"].append(
+            transaction_id
+        )
+
+        sent += 1
+
+    return sent
+
+
+# ============================================================
 # MAIN
 # ============================================================
 
@@ -896,10 +1310,16 @@ def main():
 
     alerts_sent = 0
 
+    whale_alerts = 0
+
     feeds = CONFIG.get(
         "feeds",
         []
     )
+
+    # ========================================================
+    # NEWS
+    # ========================================================
 
     for feed in feeds:
 
@@ -942,6 +1362,7 @@ def main():
             )
 
             if identifier in state["seen"]:
+
                 continue
 
             new_articles += 1
@@ -957,11 +1378,12 @@ def main():
             minimum_score = float(
                 CONFIG.get(
                     "news_min_score",
-                    4.5
+                    4.0
                 )
             )
 
             if base_score < minimum_score:
+
                 continue
 
             analysis = ai_analyze(
@@ -983,21 +1405,23 @@ def main():
             alert_minimum = float(
                 CONFIG.get(
                     "alert_min_score",
-                    6.0
+                    5.5
                 )
             )
 
             if final_score < alert_minimum:
+
                 continue
 
-            maximum = int(
+            maximum_alerts = int(
                 CONFIG.get(
                     "max_alerts_per_run",
-                    5
+                    8
                 )
             )
 
-            if alerts_sent >= maximum:
+            if alerts_sent >= maximum_alerts:
+
                 continue
 
             message = build_news_message(
@@ -1005,11 +1429,31 @@ def main():
                 analysis
             )
 
-            broadcast(message)
+            broadcast(
+                message
+            )
 
             alerts_sent += 1
 
-    save_state(state)
+    # ========================================================
+    # WHALES
+    # ========================================================
+
+    whale_alerts = process_whale_feed(
+        state
+    )
+
+    # ========================================================
+    # SAVE
+    # ========================================================
+
+    save_state(
+        state
+    )
+
+    # ========================================================
+    # REPORT
+    # ========================================================
 
     print(
         "======================================"
@@ -1026,14 +1470,23 @@ def main():
     )
 
     print(
-        "ALERTS SENT:",
+        "NEWS ALERTS SENT:",
         alerts_sent
+    )
+
+    print(
+        "WHALE ALERTS SENT:",
+        whale_alerts
     )
 
     print(
         "======================================"
     )
 
+
+# ============================================================
+# START
+# ============================================================
 
 if __name__ == "__main__":
 
