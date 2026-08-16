@@ -3,6 +3,12 @@
   "alert_min_score": 5.5,
   "max_alerts_per_run": 8,
 
+  "whale_min_usd": 10000000,
+  "whale_l2_usd": 50000000,
+  "whale_max_per_run": 5,
+
+  "whale_feed_url": "",
+
   "feeds": [
 
     {
