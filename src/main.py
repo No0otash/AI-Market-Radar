@@ -10,8 +10,9 @@ import xml.etree.ElementTree as ET
 
 # ============================================================
 # AI MARKET RADAR
-# NEWS + AI + WHALE ALERT
+# NEWS + AI + WHALE ALERT + TELEGRAM
 # ============================================================
+
 
 try:
     from huggingface_hub import InferenceClient
@@ -20,27 +21,32 @@ except ImportError:
 
 
 # ============================================================
-# ENV
+# ENVIRONMENT VARIABLES
 # ============================================================
 
 BOT_TOKEN = os.getenv(
-    "TELEGRAM_BOT_TOKEN", ""
+    "TELEGRAM_BOT_TOKEN",
+    ""
 ).strip()
 
 CHAT_ID = os.getenv(
-    "TELEGRAM_CHAT_ID", ""
+    "TELEGRAM_CHAT_ID",
+    ""
 ).strip()
 
 CHANNEL_ID = os.getenv(
-    "TELEGRAM_CHANNEL_ID", ""
+    "TELEGRAM_CHANNEL_ID",
+    ""
 ).strip()
 
 HF_TOKEN = os.getenv(
-    "HF_TOKEN", ""
+    "HF_TOKEN",
+    ""
 ).strip()
 
 WHALE_ALERT_API_KEY = os.getenv(
-    "WHALE_ALERT_API_KEY", ""
+    "WHALE_ALERT_API_KEY",
+    ""
 ).strip()
 
 AI_MODEL = os.getenv(
@@ -50,15 +56,17 @@ AI_MODEL = os.getenv(
 
 
 # ============================================================
-# VALIDATION
+# BASIC VALIDATION
 # ============================================================
 
 if not BOT_TOKEN:
+
     raise RuntimeError(
         "TELEGRAM_BOT_TOKEN is missing"
     )
 
 if not CHAT_ID:
+
     raise RuntimeError(
         "TELEGRAM_CHAT_ID is missing"
     )
@@ -72,6 +80,7 @@ with open(
     "config.json",
     encoding="utf-8"
 ) as f:
+
     CONFIG = json.load(f)
 
 
@@ -98,7 +107,7 @@ WHALE_MAX_PER_RUN = int(
 
 
 # ============================================================
-# TEXT
+# TEXT CLEANER
 # ============================================================
 
 def clean_text(text):
@@ -123,7 +132,7 @@ def clean_text(text):
 
 
 # ============================================================
-# TELEGRAM
+# TELEGRAM SEND
 # ============================================================
 
 def send_telegram(
@@ -132,7 +141,14 @@ def send_telegram(
 ):
 
     if not target:
-        return
+
+        raise RuntimeError(
+            "Telegram target is empty"
+        )
+
+    target = str(
+        target
+    ).strip()
 
     url = (
         "https://api.telegram.org/"
@@ -140,18 +156,30 @@ def send_telegram(
     )
 
     data = urllib.parse.urlencode({
+
         "chat_id": target,
+
         "text": message,
-        "disable_web_page_preview": "true"
+
+        "disable_web_page_preview":
+        "true"
+
     }).encode()
 
     request = urllib.request.Request(
+
         url,
+
         data=data,
+
         method="POST",
+
         headers={
             "Content-Type":
-            "application/x-www-form-urlencoded"
+            "application/x-www-form-urlencoded",
+
+            "User-Agent":
+            "AI-Market-Radar/1.0"
         }
     )
 
@@ -167,27 +195,75 @@ def send_telegram(
     if not result.get("ok"):
 
         raise RuntimeError(
-            f"Telegram error: {result}"
+            f"Telegram API error: {result}"
         )
 
+    return result
+
+
+# ============================================================
+# BROADCAST
+# ============================================================
 
 def broadcast(message):
 
-    send_telegram(
-        message,
-        CHAT_ID
-    )
+    # --------------------------------------------------------
+    # PERSONAL CHAT
+    # --------------------------------------------------------
 
-    if CHANNEL_ID:
+    try:
+
+        send_telegram(
+            message,
+            CHAT_ID
+        )
+
+        print(
+            "Telegram personal chat: OK"
+        )
+
+    except Exception as error:
+
+        print(
+            "Telegram personal chat ERROR:",
+            error
+        )
+
+
+    # --------------------------------------------------------
+    # CHANNEL
+    # --------------------------------------------------------
+
+    if not CHANNEL_ID:
+
+        print(
+            "Telegram channel: NOT CONFIGURED"
+        )
+
+        return
+
+
+    try:
 
         send_telegram(
             message,
             CHANNEL_ID
         )
 
+        print(
+            "Telegram channel: OK"
+        )
+
+    except Exception as error:
+
+        print(
+            "Telegram channel ERROR:",
+            error
+        )
+
 
 # ============================================================
-# HTTP
+# HTTP FETCH
 # ============================================================
 
 def fetch_url(url):
@@ -197,8 +273,14 @@ def fetch_url(url):
         url,
 
         headers={
+
             "User-Agent":
-            "AI-Market-Radar/1.0"
+            "Mozilla/5.0 "
+            "(compatible; AI-Market-Radar/1.0)",
+
+            "Accept":
+            "application/rss+xml, "
+            "application/xml, text/xml, */*"
         }
     )
 
@@ -211,7 +293,7 @@ def fetch_url(url):
 
 
 # ============================================================
-# RSS
+# RSS PARSER
 # ============================================================
 
 def parse_rss(
@@ -230,11 +312,15 @@ def parse_rss(
     ):
 
         title = clean_text(
-            item.findtext("title")
+            item.findtext(
+                "title"
+            )
         )
 
         link = (
-            item.findtext("link")
+            item.findtext(
+                "link"
+            )
             or ""
         ).strip()
 
@@ -244,21 +330,23 @@ def parse_rss(
             )
         )
 
-        if not title or not link:
+        if not title:
+
             continue
 
         articles.append({
 
-            "title": title,
+            "title":
+            title,
 
-            "link": link,
+            "link":
+            link,
 
             "description":
             description,
 
             "source":
             source
-
         })
 
     return articles
@@ -277,7 +365,15 @@ def load_state():
             encoding="utf-8"
         ) as f:
 
-            return json.load(f)
+            state = json.load(
+                f
+            )
+
+        if "seen" not in state:
+
+            state["seen"] = []
+
+        return state
 
     except Exception:
 
@@ -310,18 +406,20 @@ def save_state(state):
 
 
 # ============================================================
-# ID
+# HASH ID
 # ============================================================
 
 def make_id(text):
 
     return hashlib.sha256(
-        text.encode()
+        text.encode(
+            "utf-8"
+        )
     ).hexdigest()
 
 
 # ============================================================
-# NEWS SCORING
+# NEWS KEYWORDS
 # ============================================================
 
 KEYWORDS = {
@@ -329,6 +427,7 @@ KEYWORDS = {
     "federal reserve": 3,
     "fed": 2,
     "fomc": 3,
+
     "ecb": 2,
     "boj": 2,
 
@@ -339,6 +438,7 @@ KEYWORDS = {
     "inflation": 2,
     "cpi": 3,
     "pce": 3,
+
     "nfp": 3,
     "unemployment": 2,
     "gdp": 2,
@@ -348,8 +448,10 @@ KEYWORDS = {
 
     "bitcoin": 2,
     "btc": 2,
+
     "ethereum": 2,
     "eth": 2,
+
     "crypto": 1,
 
     "gold": 2,
@@ -360,6 +462,7 @@ KEYWORDS = {
     "attack": 3,
     "missile": 3,
     "invasion": 3,
+
     "sanctions": 2,
     "tariff": 2,
     "trade war": 3,
@@ -370,12 +473,20 @@ KEYWORDS = {
 }
 
 
-def calculate_score(article):
+# ============================================================
+# NEWS SCORE
+# ============================================================
+
+def calculate_score(
+    article
+):
 
     text = (
+
         article["title"]
         + " "
         + article["description"]
+
     ).lower()
 
     score = 0
@@ -383,6 +494,7 @@ def calculate_score(article):
     for keyword, weight in KEYWORDS.items():
 
         if keyword in text:
+
             score += weight
 
     return min(
@@ -392,7 +504,7 @@ def calculate_score(article):
 
 
 # ============================================================
-# AI
+# AI ANALYSIS
 # ============================================================
 
 def ai_analyze(
@@ -401,14 +513,27 @@ def ai_analyze(
 ):
 
     if not HF_TOKEN:
+
+        print(
+            "HF_TOKEN missing - "
+            "using fallback analysis"
+        )
+
         return None
 
     if InferenceClient is None:
+
+        print(
+            "huggingface_hub unavailable"
+        )
+
         return None
+
 
     prompt = f"""
 
-تو تحلیلگر ارشد بازارهای مالی هستی.
+تو یک تحلیلگر ارشد بازارهای مالی
+و ارز دیجیتال هستی.
 
 خبر:
 
@@ -419,31 +544,47 @@ def ai_analyze(
 امتیاز اولیه:
 {score}/10
 
-به فارسی تحلیل کن.
+لطفاً تحلیل کاملاً فارسی و ساده ارائه بده.
 
-مشخص کن:
+ساختار پاسخ:
 
-- خلاصه ساده
-- دلیل اهمیت
-- اثر روی دلار
-- اثر روی BTC
-- اثر روی طلا
-- اثر روی نفت
-- اثر روی NASDAQ
-- جهت احتمالی
-- بازه زمانی
-- میزان اطمینان
+📌 خلاصه خبر
 
-اثر احتمالی را قطعی معرفی نکن.
+🎯 چرا مهم است؟
+
+📈 اثر احتمالی روی BTC
+
+💵 اثر احتمالی روی دلار
+
+🥇 اثر احتمالی روی طلا
+
+🛢 اثر احتمالی روی نفت
+
+📊 اثر احتمالی روی بازار سهام
+
+🧭 جهت احتمالی بازار
+
+⏱ بازه زمانی اثر
+
+🎯 میزان اطمینان
+
+⚠️ هشدار ریسک
+
+هیچ نتیجه‌ای را قطعی معرفی نکن.
+سیگنال خرید یا فروش قطعی صادر نکن.
 
 """
+
 
     try:
 
         client = InferenceClient(
+
             provider="auto",
+
             api_key=HF_TOKEN
         )
+
 
         response = client.chat_completion(
 
@@ -452,14 +593,20 @@ def ai_analyze(
             messages=[
 
                 {
+
                     "role":
                     "system",
 
                     "content":
-                    "تحلیلگر مالی فارسی‌زبان باش."
+                    "تو تحلیلگر حرفه‌ای "
+                    "بازارهای مالی هستی و "
+                    "باید فارسی، واضح و "
+                    "مسئولانه پاسخ بدهی."
+
                 },
 
                 {
+
                     "role":
                     "user",
 
@@ -471,8 +618,9 @@ def ai_analyze(
 
             temperature=0.1,
 
-            max_tokens=1000
+            max_tokens=1200
         )
+
 
         return (
             response
@@ -480,6 +628,7 @@ def ai_analyze(
             .message
             .content
         )
+
 
     except Exception as error:
 
@@ -503,32 +652,48 @@ def build_news_message(
 
     if score >= 8:
 
-        level = "🔴 سطح ۳"
+        level = (
+            "🔴 سطح ۳ | بسیار مهم"
+        )
 
     elif score >= 6:
 
-        level = "🟠 سطح ۲"
+        level = (
+            "🟠 سطح ۲ | مهم"
+        )
 
     else:
 
-        level = "🟢 سطح ۱"
+        level = (
+            "🟢 سطح ۱ | قابل توجه"
+        )
+
 
     ai_text = (
+
         analysis
+
         if analysis
+
         else
+
         "تحلیل AI در دسترس نیست."
+
     )
+
 
     return f"""
 
 ━━━━━━━━━━━━━━━━━━━━
-{level} | AI MARKET RADAR
+🤖 AI MARKET RADAR
+{level}
 ━━━━━━━━━━━━━━━━━━━━
 
-📰 {article["title"]}
+📰 خبر:
 
-📊 اهمیت:
+{article["title"]}
+
+📊 امتیاز اهمیت:
 {score}/10
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -545,12 +710,15 @@ def build_news_message(
 🔗 {article["link"]}
 
 ⚠️ این تحلیل احتمالی است
-و تضمین معامله نیست.
+و تضمین سود یا سیگنال قطعی
+خرید و فروش نیست.
+
+━━━━━━━━━━━━━━━━━━━━
 """
 
 
 # ============================================================
-# WHALE ALERT API
+# WHALE ALERT
 # ============================================================
 
 def fetch_whale_alerts():
@@ -558,15 +726,18 @@ def fetch_whale_alerts():
     if not WHALE_ALERT_API_KEY:
 
         print(
-            "WHALE_ALERT_API_KEY missing"
+            "WHALE_ALERT_API_KEY "
+            "missing"
         )
 
         return []
+
 
     url = (
         "https://api.whale-alert.io/v1/"
         "transactions"
     )
+
 
     params = {
 
@@ -574,20 +745,25 @@ def fetch_whale_alerts():
         WHALE_ALERT_API_KEY,
 
         "min_value":
-        int(WHALE_MIN_USD),
+        int(
+            WHALE_MIN_USD
+        ),
 
         "limit":
         WHALE_MAX_PER_RUN
-
     }
 
+
     full_url = (
+
         url
         + "?"
         + urllib.parse.urlencode(
             params
         )
+
     )
+
 
     try:
 
@@ -598,6 +774,7 @@ def fetch_whale_alerts():
         data = json.loads(
             raw.decode()
         )
+
 
         if data.get(
             "result"
@@ -610,10 +787,12 @@ def fetch_whale_alerts():
 
             return []
 
+
         return data.get(
             "transactions",
             []
         )
+
 
     except Exception as error:
 
@@ -626,7 +805,7 @@ def fetch_whale_alerts():
 
 
 # ============================================================
-# WHALE FORMAT
+# WHALE MESSAGE
 # ============================================================
 
 def format_whale_alert(
@@ -640,6 +819,7 @@ def format_whale_alert(
         ) or 0
     )
 
+
     amount_usd = float(
         tx.get(
             "amount_usd",
@@ -647,114 +827,166 @@ def format_whale_alert(
         ) or 0
     )
 
+
     symbol = tx.get(
         "symbol",
         "UNKNOWN"
     )
+
 
     blockchain = tx.get(
         "blockchain",
         "Unknown"
     )
 
+
     tx_hash = tx.get(
         "hash",
         ""
     )
+
 
     sender = tx.get(
         "from",
         {}
     )
 
+
     receiver = tx.get(
         "to",
         {}
     )
 
-    sender_owner = (
-        sender.get(
-            "owner",
-            "Unknown"
-        )
-        if isinstance(
-            sender,
-            dict
-        )
-        else "Unknown"
-    )
 
-    receiver_owner = (
-        receiver.get(
-            "owner",
-            "Unknown"
+    if isinstance(
+        sender,
+        dict
+    ):
+
+        sender_owner = (
+            sender.get(
+                "owner"
+            )
+            or
+            "نهنگ ناشناس"
         )
-        if isinstance(
-            receiver,
-            dict
+
+    else:
+
+        sender_owner = (
+            "نهنگ ناشناس"
         )
-        else "Unknown"
-    )
+
+
+    if isinstance(
+        receiver,
+        dict
+    ):
+
+        receiver_owner = (
+            receiver.get(
+                "owner"
+            )
+            or
+            "نهنگ ناشناس"
+        )
+
+    else:
+
+        receiver_owner = (
+            "نهنگ ناشناس"
+        )
+
 
     if amount_usd >= WHALE_L2_USD:
 
         level = (
             "🔴 سطح ۲ | "
-            "هشدار نهنگ"
+            "حرکت بسیار سنگین"
         )
 
     else:
 
         level = (
             "🟡 سطح ۱ | "
-            "فعالیت نهنگ"
+            "حرکت سنگین"
         )
+
 
     if (
-        sender_owner != "Unknown"
+
+        sender_owner != "نهنگ ناشناس"
+
         and
-        receiver_owner == "Unknown"
+
+        receiver_owner ==
+        "نهنگ ناشناس"
+
     ):
 
         interpretation = (
-            "خروج دارایی از یک نهاد "
-            "شناخته‌شده به مقصد ناشناس."
+
+            "دارایی از یک موجودیت "
+            "شناخته‌شده به یک مقصد "
+            "ناشناخته منتقل شده است."
+
         )
+
 
     elif (
-        sender_owner == "Unknown"
+
+        sender_owner ==
+        "نهنگ ناشناس"
+
         and
-        receiver_owner != "Unknown"
+
+        receiver_owner !=
+        "نهنگ ناشناس"
+
     ):
 
         interpretation = (
-            "ورود دارایی به یک نهاد "
-            "شناخته‌شده."
+
+            "دارایی به یک موجودیت "
+            "شناخته‌شده منتقل شده است."
+
         )
+
 
     else:
 
         interpretation = (
-            "انتقال بزرگ شناسایی شد؛ "
-            "جهت معامله به‌تنهایی مشخص نیست."
+
+            "یک انتقال بسیار بزرگ "
+            "شناسایی شده است. "
+            "جهت خرید یا فروش از "
+            "این تراکنش به‌تنهایی "
+            "قابل تعیین نیست."
+
         )
+
 
     return f"""
 
 ━━━━━━━━━━━━━━━━━━━━
-🐋 {level}
+🐋 WHALE ALERT
+{level}
 ━━━━━━━━━━━━━━━━━━━━
 
 💰 دارایی:
+
 {symbol}
 
 🔢 مقدار:
+
 {amount:,.4f}
 
 💵 ارزش:
+
 ${amount_usd:,.0f}
 
 ⛓ بلاکچین:
+
 {blockchain}
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -762,28 +994,29 @@ ${amount_usd:,.0f}
 ━━━━━━━━━━━━━━━━━━━━
 
 📤 مبدأ:
+
 {sender_owner}
 
 📥 مقصد:
+
 {receiver_owner}
 
 ━━━━━━━━━━━━━━━━━━━━
-🧠 برداشت رادار
+🧠 تحلیل رادار
 ━━━━━━━━━━━━━━━━━━━━
 
 {interpretation}
 
 ⚠️ انتقال بزرگ به‌تنهایی
-به معنی خرید یا فروش قطعی نیست.
+به معنی خرید یا فروش قطعی
+نیست.
 
 ━━━━━━━━━━━━━━━━━━━━
 🔗 Transaction
-━━━━━━━━━━━━━━━━━━━━
 
 {tx_hash}
 
-⚠️ Whale Alert سیگنال قطعی
-خرید یا فروش نیست.
+━━━━━━━━━━━━━━━━━━━━
 """
 
 
@@ -798,14 +1031,16 @@ def main():
     )
 
     print(
-        "     AI MARKET RADAR"
+        "       AI MARKET RADAR"
     )
 
     print(
         "================================"
     )
 
+
     state = load_state()
+
 
     total_articles = 0
 
@@ -814,6 +1049,7 @@ def main():
     news_alerts = 0
 
     whale_alerts = 0
+
 
     # ========================================================
     # NEWS
@@ -824,134 +1060,250 @@ def main():
         []
     ):
 
+
         try:
 
             data = fetch_url(
                 feed["url"]
             )
 
+
             articles = parse_rss(
+
                 data,
+
                 feed["name"]
+
             )
 
+
             print(
+
                 "Articles:",
-                len(articles),
+
+                len(
+                    articles
+                ),
+
                 "|",
+
                 feed["name"]
+
             )
+
 
         except Exception as error:
 
             print(
+
                 "FEED ERROR:",
+
+                feed.get(
+                    "name",
+                    "Unknown"
+                ),
+
+                "|",
+
                 error
+
             )
 
             continue
+
 
         total_articles += len(
             articles
         )
 
+
         for article in articles:
 
+
             identifier = make_id(
+
                 article["link"]
+
+                or
+
+                article["title"]
+
             )
 
-            if identifier in state["seen"]:
+
+            if identifier in state[
+                "seen"
+            ]:
+
                 continue
 
-            state["seen"].append(
+
+            state[
+                "seen"
+            ].append(
                 identifier
             )
 
+
             new_articles += 1
+
 
             score = calculate_score(
                 article
             )
 
+
             if score < float(
+
                 CONFIG.get(
+
                     "news_min_score",
+
                     3.5
+
                 )
+
             ):
+
                 continue
 
+
             analysis = ai_analyze(
+
                 article,
+
                 score
+
             )
 
+
             if score >= float(
+
                 CONFIG.get(
+
                     "alert_min_score",
+
                     5.5
+
                 )
+
             ):
 
-                message = build_news_message(
-                    article,
-                    score,
-                    analysis
+
+                message = (
+
+                    build_news_message(
+
+                        article,
+
+                        score,
+
+                        analysis
+
+                    )
+
                 )
+
 
                 broadcast(
                     message
                 )
 
+
                 news_alerts += 1
 
+
                 if news_alerts >= int(
+
                     CONFIG.get(
+
                         "max_alerts_per_run",
+
                         8
+
                     )
+
                 ):
+
                     break
+
 
     # ========================================================
     # WHALE ALERT
     # ========================================================
 
     whale_transactions = (
+
         fetch_whale_alerts()
+
     )
+
 
     for tx in whale_transactions:
 
+
         tx_hash = tx.get(
+
             "hash",
+
             ""
+
         )
+
 
         if not tx_hash:
+
             continue
+
 
         identifier = make_id(
-            "WHALE|" + tx_hash
+
+            "WHALE|"
+
+            + tx_hash
+
         )
 
-        if identifier in state["seen"]:
+
+        if identifier in state[
+            "seen"
+        ]:
+
             continue
 
-        state["seen"].append(
+
+        state[
+            "seen"
+        ].append(
             identifier
         )
 
-        message = format_whale_alert(
-            tx
+
+        message = (
+
+            format_whale_alert(
+                tx
+            )
+
         )
+
 
         broadcast(
             message
         )
 
+
         whale_alerts += 1
+
+
+        if whale_alerts >= (
+
+            WHALE_MAX_PER_RUN
+
+        ):
+
+            break
+
 
     # ========================================================
     # SAVE
@@ -960,6 +1312,7 @@ def main():
     save_state(
         state
     )
+
 
     # ========================================================
     # REPORT
@@ -993,6 +1346,10 @@ def main():
         "================================"
     )
 
+
+# ============================================================
+# START
+# ============================================================
 
 if __name__ == "__main__":
 
