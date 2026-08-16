@@ -54,7 +54,20 @@ AI_MODEL = os.getenv(
     "AI_MODEL",
     "Qwen/Qwen3-4B-Instruct-2507"
 ).strip()
+COINGECKO_API_KEY = os.getenv(
+    "COINGECKO_API_KEY",
+    ""
+).strip()
 
+METALS_API_KEY = os.getenv(
+    "METALS_API_KEY",
+    ""
+).strip()
+
+MARKET_SNAPSHOT_ENABLED = os.getenv(
+    "MARKET_SNAPSHOT_ENABLED",
+    "true"
+).strip().lower() == "true"
 
 # ============================================================
 # BASIC VALIDATION
@@ -1418,6 +1431,536 @@ def send_welcome_test_once(state):
 
         return False
 # ============================================================
+# MARKET SNAPSHOT
+# BTC + ETH + GOLD + SILVER + USD
+# ============================================================
+
+def safe_float(value, default=0.0):
+
+    try:
+        return float(value)
+
+    except Exception:
+        return default
+
+
+def get_json(url, headers=None):
+
+    request = urllib.request.Request(
+
+        url,
+
+        headers=headers or {
+            "User-Agent":
+            "AI-Market-Radar/1.0",
+            "Accept":
+            "application/json"
+        }
+    )
+
+    with urllib.request.urlopen(
+        request,
+        timeout=30
+    ) as response:
+
+        return json.loads(
+            response.read().decode()
+        )
+
+
+# ============================================================
+# CRYPTO PRICES
+# ============================================================
+
+def fetch_crypto_market():
+
+    url = (
+        "https://api.coingecko.com/api/v3/"
+        "simple/price"
+        "?ids=bitcoin,ethereum"
+        "&vs_currencies=usd"
+        "&include_24hr_change=true"
+    )
+
+    headers = {
+        "User-Agent":
+        "AI-Market-Radar/1.0",
+        "Accept":
+        "application/json"
+    }
+
+    if COINGECKO_API_KEY:
+
+        headers["x-cg-demo-api-key"] = (
+            COINGECKO_API_KEY
+        )
+
+    try:
+
+        data = get_json(
+            url,
+            headers
+        )
+
+        return {
+
+            "btc": {
+
+                "usd":
+                safe_float(
+                    data.get(
+                        "bitcoin",
+                        {}
+                    ).get(
+                        "usd"
+                    )
+                ),
+
+                "change":
+                safe_float(
+                    data.get(
+                        "bitcoin",
+                        {}
+                    ).get(
+                        "usd_24h_change"
+                    )
+                )
+            },
+
+            "eth": {
+
+                "usd":
+                safe_float(
+                    data.get(
+                        "ethereum",
+                        {}
+                    ).get(
+                        "usd"
+                    )
+                ),
+
+                "change":
+                safe_float(
+                    data.get(
+                        "ethereum",
+                        {}
+                    ).get(
+                        "usd_24h_change"
+                    )
+                )
+            }
+
+        }
+
+    except Exception as error:
+
+        print(
+            "CRYPTO MARKET ERROR:",
+            error
+        )
+
+        return {}
+
+
+# ============================================================
+# METALS
+# ============================================================
+
+def fetch_metals_market():
+
+    if not METALS_API_KEY:
+
+        print(
+            "METALS_API_KEY missing"
+        )
+
+        return {}
+
+    url = (
+        "https://api.goldapi.io/api/"
+        "XAU/USD"
+    )
+
+    headers = {
+
+        "x-access-token":
+        METALS_API_KEY,
+
+        "Content-Type":
+        "application/json",
+
+        "User-Agent":
+        "AI-Market-Radar/1.0"
+    }
+
+    try:
+
+        gold = get_json(
+            url,
+            headers
+        )
+
+    except Exception as error:
+
+        print(
+            "GOLD API ERROR:",
+            error
+        )
+
+        gold = {}
+
+
+    url = (
+        "https://api.goldapi.io/api/"
+        "XAG/USD"
+    )
+
+    try:
+
+        silver = get_json(
+            url,
+            headers
+        )
+
+    except Exception as error:
+
+        print(
+            "SILVER API ERROR:",
+            error
+        )
+
+        silver = {}
+
+
+    return {
+
+        "gold": {
+
+            "usd":
+            safe_float(
+                gold.get(
+                    "price"
+                )
+            ),
+
+            "change":
+            safe_float(
+                gold.get(
+                    "ch")
+            )
+
+        },
+
+        "silver": {
+
+            "usd":
+            safe_float(
+                silver.get(
+                    "price"
+                )
+            ),
+
+            "change":
+            safe_float(
+                silver.get(
+                    "ch")
+            )
+
+        }
+
+    }
+
+
+# ============================================================
+# USD / IRR
+# ============================================================
+
+def fetch_usd_irr():
+
+    usd_api_url = os.getenv(
+        "USD_IRR_API_URL",
+        ""
+    ).strip()
+
+    if not usd_api_url:
+
+        print(
+            "USD_IRR_API_URL missing"
+        )
+
+        return {}
+
+    try:
+
+        data = get_json(
+            usd_api_url
+        )
+
+        price = safe_float(
+            data.get(
+                "price"
+            )
+        )
+
+        change = safe_float(
+            data.get(
+                "change_24h"
+            )
+        )
+
+        return {
+
+            "price":
+            price,
+
+            "change":
+            change
+
+        }
+
+    except Exception as error:
+
+        print(
+            "USD/IRR ERROR:",
+            error
+        )
+
+        return {}
+
+
+# ============================================================
+# CHANGE FORMAT
+# ============================================================
+
+def format_change(
+    value
+):
+
+    value = safe_float(
+        value
+    )
+
+    if value > 0:
+
+        return (
+            f"🟢 +{value:.2f}%"
+        )
+
+    if value < 0:
+
+        return (
+            f"🔴 {value:.2f}%"
+        )
+
+    return (
+        "⚪ 0.00%"
+    )
+
+
+# ============================================================
+# MARKET SNAPSHOT MESSAGE
+# ============================================================
+
+def build_market_snapshot():
+
+    crypto = fetch_crypto_market()
+
+    metals = fetch_metals_market()
+
+    usd = fetch_usd_irr()
+
+
+    btc = crypto.get(
+        "btc",
+        {}
+    )
+
+    eth = crypto.get(
+        "eth",
+        {}
+    )
+
+    gold = metals.get(
+        "gold",
+        {}
+    )
+
+    silver = metals.get(
+        "silver",
+        {}
+    )
+
+
+    # --------------------------------------------------------
+    # TOMAN CONVERSION
+    # --------------------------------------------------------
+
+    usd_irr = safe_float(
+        usd.get(
+            "price"
+        )
+    )
+
+
+    btc_toman = (
+        btc.get("usd", 0)
+        * usd_irr
+    )
+
+    eth_toman = (
+        eth.get("usd", 0)
+        * usd_irr
+    )
+
+    gold_toman = (
+        gold.get("usd", 0)
+        * usd_irr
+    )
+
+    silver_toman = (
+        silver.get("usd", 0)
+        * usd_irr
+    )
+
+
+    return f"""
+
+━━━━━━━━━━━━━━━━━━━━
+📊 MARKET SNAPSHOT
+🕐 گزارش بازار | هر ۳ ساعت
+━━━━━━━━━━━━━━━━━━━━
+
+₿ بیت‌کوین BTC
+
+💵 دلار:
+${btc.get("usd", 0):,.2f}
+
+🇮🇷 تومان:
+{btc_toman:,.0f} تومان
+
+📈 تغییر ۲۴ ساعت:
+{format_change(
+    btc.get("change", 0)
+)}
+
+━━━━━━━━━━━━━━━━━━━━
+
+♦️ اتریوم ETH
+
+💵 دلار:
+${eth.get("usd", 0):,.2f}
+
+🇮🇷 تومان:
+{eth_toman:,.0f} تومان
+
+📈 تغییر ۲۴ ساعت:
+{format_change(
+    eth.get("change", 0)
+)}
+
+━━━━━━━━━━━━━━━━━━━━
+
+🥇 طلا XAU
+
+🌎 انس جهانی:
+${gold.get("usd", 0):,.2f}
+
+🇮🇷 ارزش تقریبی:
+{gold_toman:,.0f} تومان
+
+📈 تغییر ۲۴ ساعت:
+{format_change(
+    gold.get("change", 0)
+)}
+
+━━━━━━━━━━━━━━━━━━━━
+
+🥈 نقره XAG
+
+🌎 انس جهانی:
+${silver.get("usd", 0):,.2f}
+
+🇮🇷 ارزش تقریبی:
+{silver_toman:,.0f} تومان
+
+📈 تغییر ۲۴ ساعت:
+{format_change(
+    silver.get("change", 0)
+)}
+
+━━━━━━━━━━━━━━━━━━━━
+
+💵 دلار آزاد
+
+🇮🇷 قیمت:
+{usd_irr:,.0f} تومان
+
+📈 تغییر ۲۴ ساعت:
+{format_change(
+    usd.get("change", 0)
+)}
+
+━━━━━━━━━━━━━━━━━━━━
+🤖 AI MARKET RADAR
+
+⏱ بروزرسانی خودکار:
+هر ۳ ساعت
+
+⚠️ قیمت‌ها ممکن است بین
+دو بروزرسانی تغییر کنند.
+━━━━━━━━━━━━━━━━━━━━
+
+"""
+
+# ============================================================
+# SEND MARKET SNAPSHOT
+# ============================================================
+
+def send_market_snapshot():
+
+    if not MARKET_SNAPSHOT_ENABLED:
+
+        print(
+            "Market Snapshot: DISABLED"
+        )
+
+        return
+
+
+    print(
+        "================================"
+    )
+
+    print(
+        "SENDING MARKET SNAPSHOT"
+    )
+
+    print(
+        "================================"
+    )
+
+
+    try:
+
+        message = (
+            build_market_snapshot()
+        )
+
+        broadcast(
+            message
+        )
+
+        print(
+            "MARKET SNAPSHOT: OK"
+        )
+
+    except Exception as error:
+
+        print(
+            "MARKET SNAPSHOT ERROR:",
+            error
+        )
+# ============================================================
 # MAIN
 # ============================================================
 
@@ -1718,7 +2261,11 @@ def main():
 
             break
 
+    # ========================================================
+    # MARKET SNAPSHOT
+    # ========================================================
 
+    send_market_snapshot()
     # ========================================================
     # SAVE STATE
     # ========================================================
