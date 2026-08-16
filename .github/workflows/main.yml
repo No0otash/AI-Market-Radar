@@ -43,10 +43,11 @@ jobs:
 
 
       # =====================================================
-      # INSTALL
+      # INSTALL DEPENDENCIES
       # =====================================================
 
       - name: Install dependencies
+
         run: |
 
           python -m pip install --upgrade pip
@@ -55,10 +56,11 @@ jobs:
 
 
       # =====================================================
-      # RUN RADAR
+      # RUN AI MARKET RADAR
       # =====================================================
 
       - name: Run AI Market Radar
+
         env:
 
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -68,6 +70,8 @@ jobs:
           TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
 
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+
+          WHALE_ALERT_API_KEY: ${{ secrets.WHALE_ALERT_API_KEY }}
 
           AI_MODEL: Qwen/Qwen3-4B-Instruct-2507
 
