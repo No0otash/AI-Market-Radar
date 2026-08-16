@@ -1,115 +1,62 @@
 import os
 import json
-import hashlib
 import re
 import html
+import hashlib
 import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
 
 
-CONFIG_FILE = "config.json"
-STATE_FILE = "state.json"
+# ============================================================
+# AI MARKET RADAR
+# Persian-First Trading Intelligence Engine
+# ============================================================
 
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
-CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
-HF_TOKEN = os.environ.get("HF_TOKEN", "").strip()
+try:
+    from huggingface_hub import InferenceClient
+except ImportError:
+    InferenceClient = None
 
 
-# =========================================================
-# CONFIG
-# =========================================================
+# ============================================================
+# ENVIRONMENT
+# ============================================================
 
-if not TELEGRAM_TOKEN:
-    raise RuntimeError("TELEGRAM_BOT_TOKEN is missing.")
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID", "").strip()
+
+HF_TOKEN = os.getenv("HF_TOKEN", "").strip()
+
+AI_MODEL = os.getenv(
+    "AI_MODEL",
+    "Qwen/Qwen3-4B-Instruct-2507"
+).strip()
+
+
+# ============================================================
+# VALIDATION
+# ============================================================
+
+if not BOT_TOKEN:
+    raise RuntimeError("TELEGRAM_BOT_TOKEN is missing")
 
 if not CHAT_ID:
-    raise RuntimeError("TELEGRAM_CHAT_ID is missing.")
-
-if not HF_TOKEN:
-    print("WARNING: HF_TOKEN is missing. AI analysis will use fallback mode.")
+    raise RuntimeError("TELEGRAM_CHAT_ID is missing")
 
 
-with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+# ============================================================
+# CONFIG
+# ============================================================
+
+with open("config.json", encoding="utf-8") as f:
     CONFIG = json.load(f)
 
 
-# =========================================================
-# PERSIAN FALLBACK DICTIONARY
-# =========================================================
-
-FA = {
-    "fed": "فدرال رزرو",
-    "federal reserve": "فدرال رزرو",
-    "ecb": "بانک مرکزی اروپا",
-    "boj": "بانک مرکزی ژاپن",
-    "boe": "بانک مرکزی انگلیس",
-    "central bank": "بانک مرکزی",
-
-    "interest rate": "نرخ بهره",
-    "rate cut": "کاهش نرخ بهره",
-    "rate hike": "افزایش نرخ بهره",
-    "inflation": "تورم",
-    "cpi": "شاخص قیمت مصرف‌کننده",
-    "pce": "شاخص PCE",
-    "nfp": "اشتغال غیرکشاورزی",
-    "unemployment": "بیکاری",
-    "gdp": "تولید ناخالص داخلی",
-    "pmi": "شاخص مدیران خرید",
-
-    "bitcoin": "بیت‌کوین",
-    "btc": "بیت‌کوین",
-    "ethereum": "اتریوم",
-    "eth": "اتریوم",
-    "crypto": "ارزهای دیجیتال",
-    "cryptocurrency": "ارز دیجیتال",
-    "bitcoin etf": "ETF بیت‌کوین",
-    "crypto etf": "ETF کریپتو",
-    "stablecoin": "استیبل‌کوین",
-
-    "oil": "نفت",
-    "crude oil": "نفت خام",
-    "opec": "اوپک",
-    "brent": "برنت",
-    "wti": "WTI",
-
-    "gold": "طلا",
-    "dollar": "دلار",
-    "euro": "یورو",
-    "china": "چین",
-    "japan": "ژاپن",
-    "iran": "ایران",
-    "israel": "اسرائیل",
-    "russia": "روسیه",
-    "ukraine": "اوکراین",
-
-    "war": "جنگ",
-    "attack": "حمله",
-    "invasion": "تهاجم",
-    "missile": "موشک",
-    "sanctions": "تحریم‌ها",
-    "conflict": "درگیری",
-    "crisis": "بحران",
-    "ceasefire": "آتش‌بس",
-    "military": "نظامی",
-
-    "higher": "افزایش",
-    "lower": "کاهش",
-    "rises": "افزایش یافت",
-    "falls": "کاهش یافت",
-    "surges": "جهش کرد",
-    "plunges": "سقوط کرد",
-
-    "approval": "تأیید",
-    "rejection": "رد",
-    "hack": "هک",
-    "regulation": "مقررات"
-}
-
-
-# =========================================================
-# TEXT CLEANING
-# =========================================================
+# ============================================================
+# TEXT HELPERS
+# ============================================================
 
 def clean_text(text):
 
@@ -130,113 +77,29 @@ def clean_text(text):
     return text.strip()
 
 
-# =========================================================
-# FREE TRANSLATION
-# =========================================================
-
-def translate_text(text):
-
-    text = clean_text(text)
-
-    if not text:
-        return ""
-
-    try:
-
-        query = text[:450]
-
-        url = (
-            "https://api.mymemory.translated.net/get?"
-            + urllib.parse.urlencode({
-                "q": query,
-                "langpair": "en|fa"
-            })
-        )
-
-        request = urllib.request.Request(
-            url,
-            headers={
-                "User-Agent":
-                "AI-Market-Radar/4.0"
-            }
-        )
-
-        with urllib.request.urlopen(
-            request,
-            timeout=12
-        ) as response:
-
-            data = json.loads(
-                response.read().decode(
-                    "utf-8"
-                )
-            )
-
-        translated = clean_text(
-            (
-                data.get(
-                    "responseData"
-                ) or {}
-            ).get(
-                "translatedText",
-                ""
-            )
-        )
-
-        if translated:
-            return translated
-
-    except Exception as error:
-
-        print(
-            "Translation unavailable:",
-            error
-        )
-
-
-    # Local fallback
-
-    result = text
-
-    for english, persian in sorted(
-        FA.items(),
-        key=lambda x: len(x[0]),
-        reverse=True
-    ):
-
-        result = re.sub(
-            r"\b"
-            + re.escape(english)
-            + r"\b",
-            persian,
-            result,
-            flags=re.IGNORECASE
-        )
-
-    return result
-
-
-# =========================================================
+# ============================================================
 # TELEGRAM
-# =========================================================
+# ============================================================
 
-def send_telegram(message):
+def send_telegram(message, target):
+
+    if not target:
+        return
 
     url = (
-        "https://api.telegram.org/"
-        f"bot{TELEGRAM_TOKEN}/sendMessage"
+        f"https://api.telegram.org/"
+        f"bot{BOT_TOKEN}/sendMessage"
     )
 
     payload = urllib.parse.urlencode({
 
-        "chat_id": CHAT_ID,
+        "chat_id": target,
 
         "text": message,
 
         "disable_web_page_preview": "true"
 
-    }).encode("utf-8")
-
+    }).encode()
 
     request = urllib.request.Request(
 
@@ -250,8 +113,8 @@ def send_telegram(message):
             "Content-Type":
             "application/x-www-form-urlencoded"
         }
-    )
 
+    )
 
     with urllib.request.urlopen(
         request,
@@ -259,24 +122,38 @@ def send_telegram(message):
     ) as response:
 
         result = json.loads(
-            response.read().decode(
-                "utf-8"
-            )
+            response.read().decode()
         )
-
 
     if not result.get("ok"):
 
         raise RuntimeError(
-            result
+            f"Telegram error: {result}"
         )
 
 
-# =========================================================
-# RSS
-# =========================================================
+def broadcast(message):
 
-def fetch_feed(url):
+    # Personal Telegram
+    send_telegram(
+        message,
+        CHAT_ID
+    )
+
+    # Personal channel
+    if CHANNEL_ID:
+
+        send_telegram(
+            message,
+            CHANNEL_ID
+        )
+
+
+# ============================================================
+# HTTP
+# ============================================================
+
+def fetch_url(url):
 
     request = urllib.request.Request(
 
@@ -284,10 +161,10 @@ def fetch_feed(url):
 
         headers={
             "User-Agent":
-            "Mozilla/5.0 AI-Market-Radar"
+            "AI-Market-Radar/5.0"
         }
-    )
 
+    )
 
     with urllib.request.urlopen(
         request,
@@ -297,83 +174,75 @@ def fetch_feed(url):
         return response.read()
 
 
-# =========================================================
-# RSS PARSER
-# =========================================================
+# ============================================================
+# RSS
+# ============================================================
 
-def parse_feed(data):
+def parse_rss(data, source):
 
     root = ET.fromstring(data)
 
     articles = []
 
-
-    for item in root.findall(
-        ".//item"
-    ):
+    for item in root.findall(".//item"):
 
         title = clean_text(
-            item.findtext(
-                "title"
-            ) or ""
+            item.findtext("title")
         )
 
         link = (
-            item.findtext(
-                "link"
-            ) or ""
+            item.findtext("link")
+            or ""
         ).strip()
 
         description = clean_text(
-            item.findtext(
-                "description"
-            ) or ""
+            item.findtext("description")
         )
 
+        published = clean_text(
+            item.findtext("pubDate")
+        )
 
-        if title and link:
+        if not title or not link:
+            continue
 
-            articles.append({
+        articles.append({
 
-                "title": title,
+            "title": title,
 
-                "link": link,
+            "link": link,
 
-                "description":
-                description
+            "description": description,
 
-            })
+            "published": published,
 
+            "source": source
+
+        })
 
     return articles
 
 
-# =========================================================
+# ============================================================
 # STATE
-# =========================================================
+# ============================================================
 
 def load_state():
 
     try:
 
         with open(
-            STATE_FILE,
-            "r",
+            "state.json",
             encoding="utf-8"
         ) as f:
 
-            data = json.load(f)
+            state = json.load(f)
 
-        if isinstance(
-            data.get("seen"),
-            list
-        ):
-
-            return data
+            if isinstance(state, dict):
+                return state
 
     except Exception:
         pass
-
 
     return {
         "seen": []
@@ -383,15 +252,11 @@ def load_state():
 def save_state(state):
 
     state["seen"] = (
-        state.get(
-            "seen",
-            []
-        )[-3000:]
-    )
-
+        state.get("seen", [])
+    )[-5000:]
 
     with open(
-        STATE_FILE,
+        "state.json",
         "w",
         encoding="utf-8"
     ) as f:
@@ -404,664 +269,610 @@ def save_state(state):
         )
 
 
+# ============================================================
+# DUPLICATE DETECTION
+# ============================================================
+
 def article_id(article):
 
     raw = (
+
         article["title"]
         + "|"
         + article["link"]
+
     )
 
     return hashlib.sha256(
-        raw.encode("utf-8")
+        raw.encode()
     ).hexdigest()
 
 
-# =========================================================
-# INITIAL MARKET FILTER
-# =========================================================
+# ============================================================
+# MARKET IMPORTANCE ENGINE
+# ============================================================
 
-def calculate_impact(article):
+KEYWORDS = {
+
+    # CENTRAL BANKS
+    "federal reserve": 3.0,
+    "fed": 2.5,
+    "fomc": 3.0,
+    "ecb": 2.5,
+    "boj": 2.5,
+    "boe": 2.5,
+
+    # RATES
+    "interest rate": 2.5,
+    "rate hike": 3.0,
+    "rate cut": 3.0,
+
+    # ECONOMIC DATA
+    "inflation": 2.5,
+    "cpi": 3.0,
+    "pce": 3.0,
+    "nfp": 3.0,
+    "nonfarm payroll": 3.0,
+    "unemployment": 2.0,
+    "gdp": 2.0,
+    "pmi": 2.0,
+
+    # BONDS
+    "treasury yield": 2.5,
+    "10-year yield": 2.5,
+    "bond yield": 2.5,
+
+    # CRYPTO
+    "bitcoin": 2.0,
+    "btc": 2.0,
+    "ethereum": 1.5,
+    "eth": 1.5,
+    "crypto": 1.5,
+    "stablecoin": 1.5,
+    "bitcoin etf": 3.0,
+
+    # COMMODITIES
+    "gold": 1.5,
+    "oil": 1.5,
+    "crude": 1.5,
+    "opec": 2.5,
+
+    # GEOPOLITICS
+    "war": 3.0,
+    "attack": 3.0,
+    "missile": 3.0,
+    "invasion": 3.0,
+    "ceasefire": 2.5,
+    "conflict": 2.5,
+    "sanctions": 2.0,
+    "tariff": 2.5,
+    "trade war": 3.0,
+
+    # FINANCIAL CRISIS
+    "bank failure": 3.0,
+    "bankruptcy": 3.0,
+    "default": 3.0,
+    "banking crisis": 3.0,
+
+    # SECURITY
+    "hack": 2.5,
+    "exploit": 2.5,
+
+    # BREAKING
+    "breaking": 1.0,
+    "urgent": 1.0,
+    "just in": 1.0
+}
+
+
+def calculate_importance(article):
 
     text = (
+
         article["title"]
         + " "
         + article["description"]
+
     ).lower()
 
+    total = 0
 
-    impact = 0
+    for keyword, weight in KEYWORDS.items():
 
-    keywords = {
+        if keyword in text:
 
-        "fed": 2,
-        "fomc": 2,
-        "ecb": 2,
-        "boj": 2,
-        "boe": 2,
-
-        "interest rate": 2,
-        "rate hike": 2,
-        "rate cut": 2,
-
-        "inflation": 2,
-        "cpi": 2,
-        "pce": 2,
-        "nfp": 2,
-        "unemployment": 1.5,
-        "gdp": 1.5,
-        "pmi": 1.5,
-
-        "bitcoin": 1.5,
-        "btc": 1.5,
-        "ethereum": 1.5,
-        "crypto": 1.5,
-        "bitcoin etf": 2,
-
-        "war": 2,
-        "attack": 2,
-        "invasion": 2,
-        "missile": 2,
-        "sanctions": 1.5,
-        "conflict": 1.5,
-        "crisis": 1.5,
-
-        "oil": 1,
-        "opec": 1.5,
-        "brent": 1,
-        "wti": 1,
-
-        "china": 1,
-        "taiwan": 1.5,
-        "iran": 1.5,
-        "israel": 1.5,
-        "russia": 1.5,
-        "ukraine": 1.5
-    }
-
-
-    for word, weight in keywords.items():
-
-        if word in text:
-            impact += weight
-
+            total += weight
 
     return min(
-        round(impact, 1),
-        10
+        10.0,
+        round(total, 1)
     )
 
 
-# =========================================================
-# AI ANALYST
-# =========================================================
+# ============================================================
+# LEVEL SYSTEM
+# ============================================================
 
-def ai_analyze(article):
+def get_level(score):
 
-    if not HF_TOKEN:
+    if score >= 8.5:
 
-        return fallback_analysis(
-            article
+        return (
+            "🔴",
+            "سطح ۳",
+            "هشدار معاملاتی"
         )
 
+    if score >= 6.0:
 
-    title = article[
-        "title"
+        return (
+            "🟠",
+            "سطح ۲",
+            "هشدار بازار"
+        )
+
+    return (
+        "🟢",
+        "سطح ۱",
+        "اطلاع‌رسانی"
+    )
+
+
+# ============================================================
+# AI SCHEMA
+# ============================================================
+
+AI_SCHEMA = {
+
+    "type": "object",
+
+    "properties": {
+
+        "title_fa": {
+            "type": "string"
+        },
+
+        "simple_summary": {
+            "type": "string"
+        },
+
+        "impact": {
+            "type": "number"
+        },
+
+        "confidence": {
+            "type": "number"
+        },
+
+        "direction": {
+
+            "type": "string",
+
+            "enum": [
+                "BULLISH",
+                "BEARISH",
+                "VOLATILE",
+                "NEUTRAL"
+            ]
+
+        },
+
+        "horizon": {
+            "type": "string"
+        },
+
+        "why": {
+            "type": "string"
+        },
+
+        "watch": {
+            "type": "string"
+        },
+
+        "invalidation": {
+            "type": "string"
+        },
+
+        "forex": {
+            "type": "string"
+        },
+
+        "crypto": {
+            "type": "string"
+        },
+
+        "commodities": {
+            "type": "string"
+        },
+
+        "indices": {
+            "type": "string"
+        }
+
+    },
+
+    "required": [
+
+        "title_fa",
+        "simple_summary",
+        "impact",
+        "confidence",
+        "direction",
+        "horizon",
+        "why",
+        "watch",
+        "invalidation",
+        "forex",
+        "crypto",
+        "commodities",
+        "indices"
+
     ]
 
-    description = article[
-        "description"
-    ]
+}
 
+
+# ============================================================
+# AI ANALYST
+# ============================================================
+
+def ai_analyze(article, base_score):
+
+    if not HF_TOKEN:
+        return None
+
+    if InferenceClient is None:
+        return None
 
     prompt = f"""
-You are a professional macro and financial market analyst.
 
-Analyze this news for Forex, Crypto, Gold, Oil and stock indices.
+تو تحلیلگر ارشد بازارهای مالی هستی.
 
-NEWS TITLE:
-{title}
+کاربر فارسی‌زبان است.
 
-NEWS DESCRIPTION:
-{description}
+خبر:
 
-Return ONLY valid JSON.
+عنوان:
+{article["title"]}
 
-Use this exact structure:
+خلاصه:
+{article["description"]}
 
-{{
-  "persian_title": "",
-  "summary_fa": "",
-  "impact": 0,
-  "direction": "",
-  "confidence": 0,
-  "time_horizon": "",
-  "forex": {{
-    "EUR/USD": "",
-    "GBP/USD": "",
-    "USD/JPY": "",
-    "DXY": ""
-  }},
-  "crypto": {{
-    "BTC/USDT": "",
-    "ETH/USDT": ""
-  }},
-  "commodities": {{
-    "XAU/USD": "",
-    "WTI": ""
-  }},
-  "indices": {{
-    "NASDAQ": "",
-    "SP500": ""
-  }},
-  "reason_fa": ""
-}}
+منبع:
+{article["source"]}
 
-Rules:
+امتیاز اولیه:
+{base_score}/10
 
-impact = 0 to 10
+این خبر را برای معامله‌گر تحلیل کن.
 
-confidence = 0 to 100
+بازارهای زیر را بررسی کن:
 
-direction must be one of:
+DXY
+EUR/USD
+GBP/USD
+USD/JPY
+
+BTC
+ETH
+
+GOLD
+OIL
+
+NASDAQ
+S&P 500
+
+برای هر بازار فقط در صورت وجود شواهد
+جهت احتمالی را مشخص کن.
+
+گزینه‌ها:
 
 BULLISH
 BEARISH
 VOLATILE
 NEUTRAL
 
-For every asset use:
+حتماً مشخص کن:
 
-BULLISH
-BEARISH
-VOLATILE
-NEUTRAL
+1. چرا خبر مهم است؟
+2. معنی ساده آن چیست؟
+3. اثر احتمالی روی بازار چیست؟
+4. معامله‌گر چه چیزی را زیر نظر بگیرد؟
+5. چه چیزی این سناریو را باطل می‌کند؟
+6. شدت اثر از 0 تا 10
+7. میزان اطمینان از 0 تا 100
+8. بازه زمانی اثر
 
-Write all explanatory text in Persian.
+هیچ‌وقت اثر احتمالی را قطعی معرفی نکن.
 
-Be conservative.
-Do not invent facts.
-Focus on probable market reaction, not certainty.
+همه توضیحات را فارسی بنویس.
+
 """
-
-
-    payload = json.dumps({
-
-        "inputs": prompt,
-
-        "parameters": {
-
-            "max_new_tokens": 900,
-
-            "temperature": 0.1
-
-        }
-
-    }).encode("utf-8")
-
-
-    url = (
-        "https://router.huggingface.co/"
-        "hf-inference/models/"
-        "Qwen/Qwen2.5-7B-Instruct"
-    )
-
-
-    request = urllib.request.Request(
-
-        url,
-
-        data=payload,
-
-        method="POST",
-
-        headers={
-
-            "Authorization":
-            f"Bearer {HF_TOKEN}",
-
-            "Content-Type":
-            "application/json",
-
-            "User-Agent":
-            "AI-Market-Radar/4.0"
-
-        }
-
-    )
 
 
     try:
 
-        with urllib.request.urlopen(
-            request,
-            timeout=60
-        ) as response:
+        client = InferenceClient(
 
-            raw = response.read().decode(
-                "utf-8"
-            )
+            provider="auto",
 
+            api_key=HF_TOKEN
 
-        data = json.loads(raw)
-
-
-        if isinstance(data, list):
-
-            generated = data[0].get(
-                "generated_text",
-                ""
-            )
-
-        elif isinstance(data, dict):
-
-            generated = data.get(
-                "generated_text",
-                ""
-            )
-
-        else:
-
-            generated = ""
-
-
-        # Find JSON inside model output
-
-        match = re.search(
-            r"\{.*\}",
-            generated,
-            re.DOTALL
         )
 
+        response = client.chat_completion(
 
-        if not match:
+            model=AI_MODEL,
 
-            raise ValueError(
-                "AI returned invalid JSON."
-            )
+            messages=[
 
+                {
 
-        result = json.loads(
-            match.group(0)
+                    "role": "system",
+
+                    "content":
+                    "تو یک تحلیلگر حرفه‌ای "
+                    "بازار مالی فارسی‌زبان هستی. "
+                    "اطلاعات ساختگی تولید نکن."
+
+                },
+
+                {
+
+                    "role": "user",
+
+                    "content": prompt
+
+                }
+
+            ],
+
+            response_format={
+
+                "type": "json_schema",
+
+                "json_schema": {
+
+                    "name":
+                    "MarketAnalysis",
+
+                    "schema":
+                    AI_SCHEMA,
+
+                    "strict": True
+
+                }
+
+            },
+
+            temperature=0.1,
+
+            max_tokens=1400
+
         )
 
+        return json.loads(
 
-        return result
+            response
+            .choices[0]
+            .message
+            .content
 
+        )
 
     except Exception as error:
 
         print(
-            "AI ANALYST ERROR:",
+            "AI ERROR:",
             error
         )
 
-        return fallback_analysis(
-            article
-        )
+        return None
 
 
-# =========================================================
+# ============================================================
 # FALLBACK ANALYSIS
-# =========================================================
+# ============================================================
 
-def fallback_analysis(article):
+def fallback_analysis(
+    article,
+    score
+):
 
-    text = (
-        article["title"]
-        + " "
-        + article["description"]
-    ).lower()
-
-
-    impact = calculate_impact(
-        article
+    direction = (
+        "VOLATILE"
+        if score >= 7
+        else "NEUTRAL"
     )
-
-
-    if any(
-        x in text
-        for x in [
-            "rate cut",
-            "dovish",
-            "inflation falls",
-            "ceasefire"
-        ]
-    ):
-
-        direction = "BULLISH"
-
-
-    elif any(
-        x in text
-        for x in [
-            "rate hike",
-            "hawkish",
-            "inflation rises",
-            "hot cpi",
-            "hack"
-        ]
-    ):
-
-        direction = "BEARISH"
-
-
-    elif any(
-        x in text
-        for x in [
-            "war",
-            "attack",
-            "invasion",
-            "missile",
-            "crisis"
-        ]
-    ):
-
-        direction = "VOLATILE"
-
-
-    else:
-
-        direction = "NEUTRAL"
-
 
     return {
 
-        "persian_title":
-        translate_text(
-            article["title"]
-        ),
+        "title_fa":
+        article["title"],
 
-        "summary_fa":
-        translate_text(
-            article["description"]
+        "simple_summary":
+        (
+            article["description"][:700]
+            or
+            "خبر مهمی شناسایی شده است."
         ),
 
         "impact":
-        impact,
+        score,
+
+        "confidence":
+        min(
+            65,
+            35 + score * 3
+        ),
 
         "direction":
         direction,
 
-        "confidence":
-        min(
-            50 + impact * 4,
-            90
-        ),
-
-        "time_horizon":
+        "horizon":
         "کوتاه‌مدت",
 
-        "forex": {
+        "why":
+        (
+            "موتور رادار این خبر را "
+            "به دلیل ارتباط آن با "
+            "بازارهای مالی مهم تشخیص داده است."
+        ),
 
-            "EUR/USD":
-            "NEUTRAL",
+        "watch":
+        (
+            "DXY، بازده اوراق، "
+            "BTC، NASDAQ و حجم معاملات"
+        ),
 
-            "GBP/USD":
-            "NEUTRAL",
+        "invalidation":
+        (
+            "اگر واکنش واقعی قیمت "
+            "برخلاف سناریو باشد، "
+            "اعتبار تحلیل کاهش می‌یابد."
+        ),
 
-            "USD/JPY":
-            "NEUTRAL",
+        "forex":
+        "⚪ نیازمند تأیید",
 
-            "DXY":
-            "NEUTRAL"
+        "crypto":
+        "🟡 نوسانی",
 
-        },
+        "commodities":
+        "⚪ نیازمند تأیید",
 
-        "crypto": {
-
-            "BTC/USDT":
-            direction,
-
-            "ETH/USDT":
-            direction
-
-        },
-
-        "commodities": {
-
-            "XAU/USD":
-            direction,
-
-            "WTI":
-            "NEUTRAL"
-
-        },
-
-        "indices": {
-
-            "NASDAQ":
-            direction,
-
-            "SP500":
-            direction
-
-        },
-
-        "reason_fa":
-        "تحلیل AI در دسترس نبود؛ این نتیجه با موتور تحلیل اولیه تولید شده است."
+        "indices":
+        "🟡 نوسانی"
 
     }
 
 
-# =========================================================
-# TRANSLATE AI DIRECTION
-# =========================================================
+# ============================================================
+# TRANSLATION OF DIRECTION
+# ============================================================
 
 def direction_fa(value):
 
-    value = str(
-        value or ""
-    ).upper()
+    directions = {
+
+        "BULLISH":
+        "🟢 صعودی",
+
+        "BEARISH":
+        "🔴 نزولی",
+
+        "VOLATILE":
+        "🟡 نوسانی",
+
+        "NEUTRAL":
+        "⚪ خنثی"
+
+    }
+
+    return directions.get(
+        str(value).upper(),
+        "⚪ خنثی"
+    )
 
 
-    if value == "BULLISH":
-        return "🟢 صعودی"
+# ============================================================
+# NEWS MESSAGE
+# ============================================================
 
-    if value == "BEARISH":
-        return "🔴 نزولی"
-
-    if value == "VOLATILE":
-        return "🟡 نوسانی"
-
-    return "⚪ خنثی"
-
-
-# =========================================================
-# FORMAT TELEGRAM
-# =========================================================
-
-def format_ai_alert(
+def build_news_message(
     article,
     analysis
 ):
 
     impact = float(
-        analysis.get(
-            "impact",
-            0
-        )
+        analysis["impact"]
     )
 
-
-    if impact >= 9:
-
-        level = (
-            "🚨 هشدار بحرانی بازار"
-        )
-
-    elif impact >= 7:
-
-        level = (
-            "⚡ هشدار بسیار مهم بازار"
-        )
-
-    else:
-
-        level = (
-            "📰 هشدار بازار"
-        )
-
-
-    title = analysis.get(
-        "persian_title"
+    icon, level, label = get_level(
+        impact
     )
 
+    return f"""
 
-    if not title:
+━━━━━━━━━━━━━━━━━━━━
+{icon} {level} | {label}
+━━━━━━━━━━━━━━━━━━━━
 
-        title = translate_text(
-            article["title"]
-        )
+📰 {analysis["title_fa"]}
 
+📊 شدت تأثیر:
+{impact:.1f} از 10
 
-    summary = analysis.get(
-        "summary_fa"
-    )
+🎯 میزان اطمینان:
+{float(analysis["confidence"]):.0f}٪
 
-
-    if not summary:
-
-        summary = translate_text(
-            article["description"]
-        )
-
-
-    forex = analysis.get(
-        "forex",
-        {}
-    )
-
-    crypto = analysis.get(
-        "crypto",
-        {}
-    )
-
-    commodities = analysis.get(
-        "commodities",
-        {}
-    )
-
-    indices = analysis.get(
-        "indices",
-        {}
-    )
-
-
-    message = f"""
-{level}
-
-📰 {title}
-
-━━━━━━━━━━━━━━━━
-
-📊 شدت اثر:
-{impact}/10
-
-🎯 جهت کلی:
+🎯 جهت احتمالی:
 {direction_fa(
-    analysis.get("direction")
+    analysis["direction"]
 )}
 
-🧠 اطمینان:
-{analysis.get(
-    "confidence",
-    0
-)}٪
+⏱ بازه اثر:
+{analysis["horizon"]}
 
-⏱ افق زمانی:
-{analysis.get(
-    "time_horizon",
-    "نامشخص"
-)}
+━━━━━━━━━━━━━━━━━━━━
+🧠 تحلیل هوشمند بازار
+━━━━━━━━━━━━━━━━━━━━
 
-━━━━━━━━━━━━━━━━
+❓ چرا مهم است؟
 
-💱 FOREX
+{analysis["why"]}
 
-EUR/USD: {direction_fa(
-    forex.get("EUR/USD")
-)}
+📖 معنی ساده:
 
-GBP/USD: {direction_fa(
-    forex.get("GBP/USD")
-)}
+{analysis["simple_summary"]}
 
-USD/JPY: {direction_fa(
-    forex.get("USD/JPY")
-)}
+━━━━━━━━━━━━━━━━━━━━
+📈 اثر احتمالی بازار
+━━━━━━━━━━━━━━━━━━━━
 
-DXY: {direction_fa(
-    forex.get("DXY")
-)}
+💱 فارکس:
 
-━━━━━━━━━━━━━━━━
+{analysis["forex"]}
 
-₿ CRYPTO
+₿ کریپتو:
 
-BTC/USDT: {direction_fa(
-    crypto.get("BTC/USDT")
-)}
+{analysis["crypto"]}
 
-ETH/USDT: {direction_fa(
-    crypto.get("ETH/USDT")
-)}
+🥇 کالاها:
 
-━━━━━━━━━━━━━━━━
+{analysis["commodities"]}
 
-🥇 COMMODITIES
+📊 شاخص‌ها:
 
-XAU/USD: {direction_fa(
-    commodities.get("XAU/USD")
-)}
+{analysis["indices"]}
 
-WTI: {direction_fa(
-    commodities.get("WTI")
-)}
+━━━━━━━━━━━━━━━━━━━━
+👀 چه چیزی را زیر نظر بگیریم؟
+━━━━━━━━━━━━━━━━━━━━
 
-━━━━━━━━━━━━━━━━
+{analysis["watch"]}
 
-📈 INDICES
+━━━━━━━━━━━━━━━━━━━━
+⚠️ نقطه ابطال سناریو
+━━━━━━━━━━━━━━━━━━━━
 
-NASDAQ: {direction_fa(
-    indices.get("NASDAQ")
-)}
+{analysis["invalidation"]}
 
-S&P 500: {direction_fa(
-    indices.get("SP500")
-)}
-
-━━━━━━━━━━━━━━━━
-
-🧠 تحلیل:
-
-{analysis.get(
-    "reason_fa",
-    ""
-)}
-
-━━━━━━━━━━━━━━━━
-
-📝 خلاصه:
-
-{summary}
-
-━━━━━━━━━━━━━━━━
-
-⚠️ تحلیل خودکار است.
-این پیام تضمین سود یا توصیه قطعی معامله نیست.
+━━━━━━━━━━━━━━━━━━━━
 
 📰 منبع:
-{article["link"]}
-""".strip()
+{article["source"]}
+
+🔗 {article["link"]}
+
+⚠️ این تحلیل احتمالی است،
+نه تضمین سود یا معامله.
+"""
 
 
-    return message
-
-
-# =========================================================
+# ============================================================
 # MAIN
-# =========================================================
+# ============================================================
 
 def main():
 
@@ -1070,238 +881,160 @@ def main():
     )
 
     print(
-        "       AI MARKET RADAR STARTED"
+        "       AI MARKET RADAR v5"
     )
 
     print(
         "======================================"
     )
 
-
     state = load_state()
 
-
-    total = 0
+    total_articles = 0
 
     new_articles = 0
 
-    alerts = 0
+    alerts_sent = 0
 
-
-    threshold = float(
-        CONFIG.get(
-            "impact_threshold",
-            7
-        )
-    )
-
-
-    max_alerts = int(
-        CONFIG.get(
-            "max_alerts_per_run",
-            5
-        )
-    )
-
-
-    for feed in CONFIG.get(
+    feeds = CONFIG.get(
         "feeds",
         []
-    ):
+    )
+
+    for feed in feeds:
 
         try:
 
-            data = fetch_feed(
-                feed
+            data = fetch_url(
+                feed["url"]
             )
 
-            articles = parse_feed(
-                data
+            articles = parse_rss(
+                data,
+                feed["name"]
             )
-
 
             print(
-                f"Articles found: "
-                f"{len(articles)}"
+                "Feed:",
+                feed["name"],
+                "Articles:",
+                len(articles)
             )
-
 
         except Exception as error:
 
             print(
                 "FEED ERROR:",
+                feed["name"],
                 error
             )
 
             continue
 
-
-        total += len(
+        total_articles += len(
             articles
         )
 
-
         for article in articles:
 
-            uid = article_id(
+            identifier = article_id(
                 article
             )
 
-
-            if uid in state[
-                "seen"
-            ]:
-
+            if identifier in state["seen"]:
                 continue
-
 
             new_articles += 1
 
+            state["seen"].append(
+                identifier
+            )
 
-            impact = calculate_impact(
+            base_score = calculate_importance(
                 article
             )
 
-
-            print(
-                "--------------------------------"
-            )
-
-            print(
-                article["title"]
-            )
-
-            print(
-                f"Initial impact: "
-                f"{impact}/10"
-            )
-
-
-            # -----------------------------------------
-            # LOW IMPACT
-            # -----------------------------------------
-
-            if impact < threshold:
-
-                state[
-                    "seen"
-                ].append(
-                    uid
+            minimum_score = float(
+                CONFIG.get(
+                    "news_min_score",
+                    4.5
                 )
-
-                continue
-
-
-            # -----------------------------------------
-            # LIMIT
-            # -----------------------------------------
-
-            if alerts >= max_alerts:
-
-                continue
-
-
-            # -----------------------------------------
-            # AI
-            # -----------------------------------------
-
-            print(
-                "Running AI Analyst..."
             )
 
+            if base_score < minimum_score:
+                continue
 
             analysis = ai_analyze(
-                article
+                article,
+                base_score
             )
 
+            if not analysis:
 
-            # -----------------------------------------
-            # FINAL FILTER
-            # -----------------------------------------
+                analysis = fallback_analysis(
+                    article,
+                    base_score
+                )
 
-            final_impact = float(
-                analysis.get(
-                    "impact",
-                    impact
+            final_score = float(
+                analysis["impact"]
+            )
+
+            alert_minimum = float(
+                CONFIG.get(
+                    "alert_min_score",
+                    6.0
                 )
             )
 
-
-            if final_impact < threshold:
-
-                state[
-                    "seen"
-                ].append(
-                    uid
-                )
-
+            if final_score < alert_minimum:
                 continue
 
+            maximum = int(
+                CONFIG.get(
+                    "max_alerts_per_run",
+                    5
+                )
+            )
 
-            # -----------------------------------------
-            # SEND TELEGRAM
-            # -----------------------------------------
+            if alerts_sent >= maximum:
+                continue
 
-            message = format_ai_alert(
+            message = build_news_message(
                 article,
                 analysis
             )
 
+            broadcast(message)
 
-            try:
+            alerts_sent += 1
 
-                send_telegram(
-                    message
-                )
-
-
-                alerts += 1
-
-
-                state[
-                    "seen"
-                ].append(
-                    uid
-                )
-
-
-                print(
-                    "AI ALERT SENT"
-                )
-
-
-            except Exception as error:
-
-                print(
-                    "TELEGRAM ERROR:",
-                    error
-                )
-
-
-    save_state(
-        state
-    )
-
+    save_state(state)
 
     print(
         "======================================"
     )
 
     print(
-        f"TOTAL ARTICLES: {total}"
+        "TOTAL ARTICLES:",
+        total_articles
     )
 
     print(
-        f"NEW ARTICLES: {new_articles}"
+        "NEW ARTICLES:",
+        new_articles
     )
 
     print(
-        f"AI ALERTS SENT: {alerts}"
+        "ALERTS SENT:",
+        alerts_sent
     )
 
     print(
-        "======================================")
+        "======================================"
+    )
 
 
 if __name__ == "__main__":
+
     main()
