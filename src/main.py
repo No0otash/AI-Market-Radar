@@ -11,22 +11,23 @@ import xml.etree.ElementTree as ET
 CONFIG_FILE = "config.json"
 STATE_FILE = "state.json"
 
-TOKEN = (os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
-CHAT_ID = (os.environ.get("TELEGRAM_CHAT_ID") or "").strip()
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+HF_TOKEN = os.environ.get("HF_TOKEN", "").strip()
 
 
 # =========================================================
-# VALIDATION
+# CONFIG
 # =========================================================
 
-if not TOKEN:
+if not TELEGRAM_TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN is missing.")
 
 if not CHAT_ID:
     raise RuntimeError("TELEGRAM_CHAT_ID is missing.")
 
-if not os.path.exists(CONFIG_FILE):
-    raise RuntimeError("config.json not found.")
+if not HF_TOKEN:
+    print("WARNING: HF_TOKEN is missing. AI analysis will use fallback mode.")
 
 
 with open(CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -34,7 +35,7 @@ with open(CONFIG_FILE, "r", encoding="utf-8") as f:
 
 
 # =========================================================
-# PERSIAN FINANCIAL DICTIONARY
+# PERSIAN FALLBACK DICTIONARY
 # =========================================================
 
 FA = {
@@ -48,47 +49,35 @@ FA = {
     "interest rate": "نرخ بهره",
     "rate cut": "کاهش نرخ بهره",
     "rate hike": "افزایش نرخ بهره",
-    "rates higher": "نرخ‌های بهره بالاتر",
-    "rates lower": "نرخ‌های بهره پایین‌تر",
-
     "inflation": "تورم",
-    "cpi": "شاخص قیمت مصرف‌کننده (CPI)",
+    "cpi": "شاخص قیمت مصرف‌کننده",
     "pce": "شاخص PCE",
-    "nfp": "اشتغال غیرکشاورزی (NFP)",
-    "nonfarm payroll": "اشتغال غیرکشاورزی",
+    "nfp": "اشتغال غیرکشاورزی",
     "unemployment": "بیکاری",
-    "gdp": "تولید ناخالص داخلی (GDP)",
-    "pmi": "شاخص مدیران خرید (PMI)",
-    "retail sales": "خرده‌فروشی",
-    "jobs report": "گزارش اشتغال",
+    "gdp": "تولید ناخالص داخلی",
+    "pmi": "شاخص مدیران خرید",
 
     "bitcoin": "بیت‌کوین",
-    "btc": "بیت‌کوین (BTC)",
+    "btc": "بیت‌کوین",
     "ethereum": "اتریوم",
-    "eth": "اتریوم (ETH)",
+    "eth": "اتریوم",
     "crypto": "ارزهای دیجیتال",
     "cryptocurrency": "ارز دیجیتال",
     "bitcoin etf": "ETF بیت‌کوین",
     "crypto etf": "ETF کریپتو",
     "stablecoin": "استیبل‌کوین",
-    "exchange hack": "هک صرافی",
-    "crypto regulation": "مقررات ارزهای دیجیتال",
 
     "oil": "نفت",
     "crude oil": "نفت خام",
-    "oil prices": "قیمت نفت",
     "opec": "اوپک",
     "brent": "برنت",
     "wti": "WTI",
 
     "gold": "طلا",
     "dollar": "دلار",
-    "usd": "دلار آمریکا",
     "euro": "یورو",
-    "japan": "ژاپن",
     "china": "چین",
-    "taiwan": "تایوان",
-
+    "japan": "ژاپن",
     "iran": "ایران",
     "israel": "اسرائیل",
     "russia": "روسیه",
@@ -103,7 +92,6 @@ FA = {
     "crisis": "بحران",
     "ceasefire": "آتش‌بس",
     "military": "نظامی",
-    "military escalation": "تشدید تنش نظامی",
 
     "higher": "افزایش",
     "lower": "کاهش",
@@ -111,19 +99,11 @@ FA = {
     "falls": "کاهش یافت",
     "surges": "جهش کرد",
     "plunges": "سقوط کرد",
-    "unexpectedly": "به‌طور غیرمنتظره",
 
     "approval": "تأیید",
     "rejection": "رد",
     "hack": "هک",
-    "regulation": "مقررات",
-
-    "stocks": "سهام",
-    "stock market": "بازار سهام",
-    "market": "بازار",
-    "markets": "بازارها",
-    "bank": "بانک",
-    "banks": "بانک‌ها",
+    "regulation": "مقررات"
 }
 
 
@@ -132,14 +112,26 @@ FA = {
 # =========================================================
 
 def clean_text(text):
+
     text = html.unescape(text or "")
-    text = re.sub(r"<[^>]+>", " ", text)
-    text = re.sub(r"\s+", " ", text)
+
+    text = re.sub(
+        r"<[^>]+>",
+        " ",
+        text
+    )
+
+    text = re.sub(
+        r"\s+",
+        " ",
+        text
+    )
+
     return text.strip()
 
 
 # =========================================================
-# FREE PERSIAN TRANSLATION
+# FREE TRANSLATION
 # =========================================================
 
 def translate_text(text):
@@ -149,13 +141,6 @@ def translate_text(text):
     if not text:
         return ""
 
-    if not CONFIG.get(
-        "translation_enabled",
-        True
-    ):
-        return text
-
-    # Public translation endpoint.
     try:
 
         query = text[:450]
@@ -172,7 +157,7 @@ def translate_text(text):
             url,
             headers={
                 "User-Agent":
-                "AI-Market-Radar/3.0"
+                "AI-Market-Radar/4.0"
             }
         )
 
@@ -199,27 +184,23 @@ def translate_text(text):
         )
 
         if translated:
-
             return translated
 
     except Exception as error:
 
         print(
-            "Translation service unavailable:",
+            "Translation unavailable:",
             error
         )
 
 
-    # =====================================================
-    # LOCAL FALLBACK
-    # =====================================================
+    # Local fallback
 
     result = text
 
     for english, persian in sorted(
         FA.items(),
-        key=lambda item:
-        len(item[0]),
+        key=lambda x: len(x[0]),
         reverse=True
     ):
 
@@ -243,7 +224,7 @@ def send_telegram(message):
 
     url = (
         "https://api.telegram.org/"
-        f"bot{TOKEN}/sendMessage"
+        f"bot{TELEGRAM_TOKEN}/sendMessage"
     )
 
     payload = urllib.parse.urlencode({
@@ -287,22 +268,15 @@ def send_telegram(message):
     if not result.get("ok"):
 
         raise RuntimeError(
-            f"Telegram error: {result}"
+            result
         )
 
 
-    return result
-
-
 # =========================================================
-# RSS FETCH
+# RSS
 # =========================================================
 
 def fetch_feed(url):
-
-    print(
-        f"Fetching: {url}"
-    )
 
     request = urllib.request.Request(
 
@@ -310,7 +284,7 @@ def fetch_feed(url):
 
         headers={
             "User-Agent":
-            "Mozilla/5.0 AI-Market-Radar/3.0"
+            "Mozilla/5.0 AI-Market-Radar"
         }
     )
 
@@ -320,18 +294,11 @@ def fetch_feed(url):
         timeout=30
     ) as response:
 
-        data = response.read()
-
-
-    print(
-        f"Downloaded: {len(data)} bytes"
-    )
-
-    return data
+        return response.read()
 
 
 # =========================================================
-# RSS / ATOM PARSER
+# RSS PARSER
 # =========================================================
 
 def parse_feed(data):
@@ -340,10 +307,6 @@ def parse_feed(data):
 
     articles = []
 
-
-    # =====================================================
-    # RSS
-    # =====================================================
 
     for item in root.findall(
         ".//item"
@@ -382,75 +345,6 @@ def parse_feed(data):
             })
 
 
-    # =====================================================
-    # ATOM
-    # =====================================================
-
-    if not articles:
-
-        namespace = {
-            "atom":
-            "http://www.w3.org/2005/Atom"
-        }
-
-
-        for entry in root.findall(
-            ".//atom:entry",
-            namespace
-        ):
-
-            title = clean_text(
-                entry.findtext(
-                    "atom:title",
-                    default="",
-                    namespaces=namespace
-                )
-            )
-
-
-            description = clean_text(
-                entry.findtext(
-                    "atom:summary",
-                    default="",
-                    namespaces=namespace
-                )
-            )
-
-
-            link = ""
-
-            link_element = entry.find(
-                "atom:link",
-                namespace
-            )
-
-
-            if link_element is not None:
-
-                link = (
-                    link_element.attrib
-                    .get(
-                        "href",
-                        ""
-                    )
-                    .strip()
-                )
-
-
-            if title and link:
-
-                articles.append({
-
-                    "title": title,
-
-                    "link": link,
-
-                    "description":
-                    description
-
-                })
-
-
     return articles
 
 
@@ -459,15 +353,6 @@ def parse_feed(data):
 # =========================================================
 
 def load_state():
-
-    if not os.path.exists(
-        STATE_FILE
-    ):
-
-        return {
-            "seen": []
-        }
-
 
     try:
 
@@ -479,33 +364,20 @@ def load_state():
 
             data = json.load(f)
 
-
-        if not isinstance(
-            data,
-            dict
-        ):
-
-            return {
-                "seen": []
-            }
-
-
-        if not isinstance(
+        if isinstance(
             data.get("seen"),
             list
         ):
 
-            data["seen"] = []
-
-
-        return data
-
+            return data
 
     except Exception:
+        pass
 
-        return {
-            "seen": []
-        }
+
+    return {
+        "seen": []
+    }
 
 
 def save_state(state):
@@ -514,7 +386,7 @@ def save_state(state):
         state.get(
             "seen",
             []
-        )[-2000:]
+        )[-3000:]
     )
 
 
@@ -532,18 +404,13 @@ def save_state(state):
         )
 
 
-def get_article_id(article):
+def article_id(article):
 
     raw = (
-
         article["title"]
-
         + "|"
-
         + article["link"]
-
     )
-
 
     return hashlib.sha256(
         raw.encode("utf-8")
@@ -551,500 +418,364 @@ def get_article_id(article):
 
 
 # =========================================================
-# MARKET ANALYSIS
+# INITIAL MARKET FILTER
 # =========================================================
 
-def analyze(article):
+def calculate_impact(article):
 
     text = (
-
         article["title"]
-
         + " "
-
         + article["description"]
-
     ).lower()
 
 
-    impact = 0.0
+    impact = 0
 
-    reasons = []
+    keywords = {
 
+        "fed": 2,
+        "fomc": 2,
+        "ecb": 2,
+        "boj": 2,
+        "boe": 2,
 
-    # =====================================================
-    # CENTRAL BANKS
-    # =====================================================
+        "interest rate": 2,
+        "rate hike": 2,
+        "rate cut": 2,
 
-    groups = [
+        "inflation": 2,
+        "cpi": 2,
+        "pce": 2,
+        "nfp": 2,
+        "unemployment": 1.5,
+        "gdp": 1.5,
+        "pmi": 1.5,
 
-        (
-            [
-                "fed",
-                "fomc",
-                "ecb",
-                "boj",
-                "boe",
-                "central bank"
-            ],
-            2.0
-        ),
+        "bitcoin": 1.5,
+        "btc": 1.5,
+        "ethereum": 1.5,
+        "crypto": 1.5,
+        "bitcoin etf": 2,
 
-        (
-            [
-                "interest rate",
-                "rate hike",
-                "rate cut",
-                "rates higher",
-                "rates lower"
-            ],
-            2.0
-        ),
+        "war": 2,
+        "attack": 2,
+        "invasion": 2,
+        "missile": 2,
+        "sanctions": 1.5,
+        "conflict": 1.5,
+        "crisis": 1.5,
 
-        (
-            [
-                "inflation",
-                "cpi",
-                "pce",
-                "nfp",
-                "nonfarm payroll",
-                "unemployment",
-                "gdp",
-                "pmi",
-                "jobs report"
-            ],
-            1.5
-        ),
+        "oil": 1,
+        "opec": 1.5,
+        "brent": 1,
+        "wti": 1,
 
-        (
-            [
-                "war",
-                "attack",
-                "invasion",
-                "missile",
-                "sanctions",
-                "conflict",
-                "crisis",
-                "ceasefire",
-                "military",
-                "iran",
-                "israel",
-                "russia",
-                "ukraine",
-                "china",
-                "taiwan"
-            ],
-            1.5
-        ),
-
-        (
-            [
-                "bitcoin",
-                "btc",
-                "ethereum",
-                "eth",
-                "crypto",
-                "bitcoin etf",
-                "crypto etf",
-                "exchange hack",
-                "crypto regulation",
-                "stablecoin"
-            ],
-            1.5
-        ),
-
-        (
-            [
-                "oil",
-                "opec",
-                "brent",
-                "wti",
-                "crude oil"
-            ],
-            1.0
-        )
-
-    ]
+        "china": 1,
+        "taiwan": 1.5,
+        "iran": 1.5,
+        "israel": 1.5,
+        "russia": 1.5,
+        "ukraine": 1.5
+    }
 
 
-    for words, weight in groups:
+    for word, weight in keywords.items():
 
-        for word in words:
-
-            if word in text:
-
-                impact += weight
-
-                reasons.append(
-                    word
-                )
+        if word in text:
+            impact += weight
 
 
-    impact = min(
-        round(
-            impact,
-            1
-        ),
-        10.0
+    return min(
+        round(impact, 1),
+        10
     )
 
 
-    # =====================================================
-    # DIRECTION
-    # =====================================================
+# =========================================================
+# AI ANALYST
+# =========================================================
 
-    if any(
-        word in text
-        for word in [
+def ai_analyze(article):
 
-            "war",
-            "attack",
-            "invasion",
-            "missile",
-            "bank failure",
-            "financial crisis",
-            "military escalation"
+    if not HF_TOKEN:
 
-        ]
-    ):
-
-        direction = (
-            "🟡 نوسانی / ریسک‌گریز"
+        return fallback_analysis(
+            article
         )
 
 
-    elif any(
-        word in text
-        for word in [
+    title = article[
+        "title"
+    ]
 
+    description = article[
+        "description"
+    ]
+
+
+    prompt = f"""
+You are a professional macro and financial market analyst.
+
+Analyze this news for Forex, Crypto, Gold, Oil and stock indices.
+
+NEWS TITLE:
+{title}
+
+NEWS DESCRIPTION:
+{description}
+
+Return ONLY valid JSON.
+
+Use this exact structure:
+
+{{
+  "persian_title": "",
+  "summary_fa": "",
+  "impact": 0,
+  "direction": "",
+  "confidence": 0,
+  "time_horizon": "",
+  "forex": {{
+    "EUR/USD": "",
+    "GBP/USD": "",
+    "USD/JPY": "",
+    "DXY": ""
+  }},
+  "crypto": {{
+    "BTC/USDT": "",
+    "ETH/USDT": ""
+  }},
+  "commodities": {{
+    "XAU/USD": "",
+    "WTI": ""
+  }},
+  "indices": {{
+    "NASDAQ": "",
+    "SP500": ""
+  }},
+  "reason_fa": ""
+}}
+
+Rules:
+
+impact = 0 to 10
+
+confidence = 0 to 100
+
+direction must be one of:
+
+BULLISH
+BEARISH
+VOLATILE
+NEUTRAL
+
+For every asset use:
+
+BULLISH
+BEARISH
+VOLATILE
+NEUTRAL
+
+Write all explanatory text in Persian.
+
+Be conservative.
+Do not invent facts.
+Focus on probable market reaction, not certainty.
+"""
+
+
+    payload = json.dumps({
+
+        "inputs": prompt,
+
+        "parameters": {
+
+            "max_new_tokens": 900,
+
+            "temperature": 0.1
+
+        }
+
+    }).encode("utf-8")
+
+
+    url = (
+        "https://router.huggingface.co/"
+        "hf-inference/models/"
+        "Qwen/Qwen2.5-7B-Instruct"
+    )
+
+
+    request = urllib.request.Request(
+
+        url,
+
+        data=payload,
+
+        method="POST",
+
+        headers={
+
+            "Authorization":
+            f"Bearer {HF_TOKEN}",
+
+            "Content-Type":
+            "application/json",
+
+            "User-Agent":
+            "AI-Market-Radar/4.0"
+
+        }
+
+    )
+
+
+    try:
+
+        with urllib.request.urlopen(
+            request,
+            timeout=60
+        ) as response:
+
+            raw = response.read().decode(
+                "utf-8"
+            )
+
+
+        data = json.loads(raw)
+
+
+        if isinstance(data, list):
+
+            generated = data[0].get(
+                "generated_text",
+                ""
+            )
+
+        elif isinstance(data, dict):
+
+            generated = data.get(
+                "generated_text",
+                ""
+            )
+
+        else:
+
+            generated = ""
+
+
+        # Find JSON inside model output
+
+        match = re.search(
+            r"\{.*\}",
+            generated,
+            re.DOTALL
+        )
+
+
+        if not match:
+
+            raise ValueError(
+                "AI returned invalid JSON."
+            )
+
+
+        result = json.loads(
+            match.group(0)
+        )
+
+
+        return result
+
+
+    except Exception as error:
+
+        print(
+            "AI ANALYST ERROR:",
+            error
+        )
+
+        return fallback_analysis(
+            article
+        )
+
+
+# =========================================================
+# FALLBACK ANALYSIS
+# =========================================================
+
+def fallback_analysis(article):
+
+    text = (
+        article["title"]
+        + " "
+        + article["description"]
+    ).lower()
+
+
+    impact = calculate_impact(
+        article
+    )
+
+
+    if any(
+        x in text
+        for x in [
             "rate cut",
             "dovish",
             "inflation falls",
-            "inflation cools",
-            "cool cpi",
-            "bitcoin etf approval",
-            "crypto etf approval",
             "ceasefire"
-
         ]
     ):
 
-        direction = (
-            "🟢 صعودی احتمالی"
-        )
+        direction = "BULLISH"
 
 
     elif any(
-        word in text
-        for word in [
-
+        x in text
+        for x in [
             "rate hike",
             "hawkish",
             "inflation rises",
             "hot cpi",
-            "bitcoin etf rejection",
-            "crypto ban",
-            "exchange hack"
-
+            "hack"
         ]
     ):
 
-        direction = (
-            "🔴 نزولی احتمالی"
-        )
+        direction = "BEARISH"
 
 
-    else:
-
-        direction = (
-            "⚪ خنثی / نامشخص"
-        )
-
-
-    # =====================================================
-    # CONFIDENCE
-    # =====================================================
-
-    confidence = min(
-
-        round(
-            50 +
-            impact * 4.5,
-            1
-        ),
-
-        95.0
-
-    )
-
-
-    # =====================================================
-    # AFFECTED MARKETS
-    # =====================================================
-
-    markets = []
-
-
-    if any(
-        word in text
-        for word in [
-
-            "fed",
-            "fomc",
-            "ecb",
-            "boj",
-            "boe",
-            "cpi",
-            "pce",
-            "nfp",
-            "inflation",
-            "interest rate"
-
-        ]
-    ):
-
-        markets += [
-
-            "EUR/USD",
-            "GBP/USD",
-            "USD/JPY",
-            "XAU/USD",
-            "DXY",
-            "BTC/USDT",
-            "ETH/USDT",
-            "NASDAQ"
-
-        ]
-
-
-    if any(
-        word in text
-        for word in [
-
-            "bitcoin",
-            "btc",
-            "ethereum",
-            "eth",
-            "crypto",
-            "crypto etf",
-            "exchange hack"
-
-        ]
-    ):
-
-        markets += [
-
-            "BTC/USDT",
-            "ETH/USDT"
-
-        ]
-
-
-    if any(
-        word in text
-        for word in [
-
-            "oil",
-            "opec",
-            "brent",
-            "wti",
-            "crude oil"
-
-        ]
-    ):
-
-        markets += [
-
-            "WTI",
-            "CAD"
-
-        ]
-
-
-    if any(
-        word in text
-        for word in [
-
+    elif any(
+        x in text
+        for x in [
             "war",
             "attack",
             "invasion",
             "missile",
-            "sanctions",
-            "conflict",
-            "crisis",
-            "iran",
-            "israel",
-            "russia",
-            "ukraine",
-            "china",
-            "taiwan"
-
+            "crisis"
         ]
     ):
 
-        markets += [
+        direction = "VOLATILE"
 
-            "XAU/USD",
-            "USD/JPY",
-            "BTC/USDT",
-            "WTI"
-
-        ]
-
-
-    markets = list(
-        dict.fromkeys(
-            markets
-        )
-    )
-
-
-    if not markets:
-
-        markets = (
-            CONFIG[
-                "watchlist"
-            ][:3]
-        )
-
-
-    # =====================================================
-    # ASSET DIRECTION
-    # =====================================================
-
-    asset_view = {}
-
-
-    for market in markets:
-
-        view = (
-            "⚪ نامشخص"
-        )
-
-
-        if market in [
-            "EUR/USD",
-            "GBP/USD"
-        ]:
-
-            if any(
-                x in text
-                for x in [
-                    "fed",
-                    "fomc",
-                    "rate hike",
-                    "hawkish",
-                    "hot cpi"
-                ]
-            ):
-
-                view = "🔴 نزولی"
-
-
-        if market == "USD/JPY":
-
-            if any(
-                x in text
-                for x in [
-                    "fed",
-                    "rate hike",
-                    "hawkish",
-                    "hot cpi"
-                ]
-            ):
-
-                view = "🟢 صعودی"
-
-
-        if market == "XAU/USD":
-
-            if any(
-                x in text
-                for x in [
-                    "rate hike",
-                    "hawkish",
-                    "hot cpi"
-                ]
-            ):
-
-                view = "🔴 نزولی"
-
-
-        if market in [
-            "BTC/USDT",
-            "ETH/USDT"
-        ]:
-
-            if any(
-                x in text
-                for x in [
-                    "bitcoin etf approval",
-                    "crypto etf approval",
-                    "rate cut",
-                    "dovish"
-                ]
-            ):
-
-                view = "🟢 صعودی"
-
-
-            elif any(
-                x in text
-                for x in [
-                    "exchange hack",
-                    "crypto ban",
-                    "rate hike",
-                    "hawkish"
-                ]
-            ):
-
-                view = "🔴 نزولی"
-
-
-        if market == "WTI":
-
-            if any(
-                x in text
-                for x in [
-                    "war",
-                    "attack",
-                    "opec",
-                    "supply disruption"
-                ]
-            ):
-
-                view = "🟢 صعودی"
-
-
-        asset_view[
-            market
-        ] = view
-
-
-    # =====================================================
-    # TIME HORIZON
-    # =====================================================
-
-    if impact >= 8:
-
-        horizon = (
-            "۱۵ دقیقه تا ۴ ساعت"
-        )
-
-    elif impact >= 6:
-
-        horizon = (
-            "۱ تا ۱۲ ساعت"
-        )
 
     else:
 
-        horizon = (
-            "۴ ساعت تا ۱ روز"
-        )
+        direction = "NEUTRAL"
 
 
     return {
+
+        "persian_title":
+        translate_text(
+            article["title"]
+        ),
+
+        "summary_fa":
+        translate_text(
+            article["description"]
+        ),
 
         "impact":
         impact,
@@ -1053,153 +784,272 @@ def analyze(article):
         direction,
 
         "confidence":
-        confidence,
+        min(
+            50 + impact * 4,
+            90
+        ),
 
-        "markets":
-        markets,
+        "time_horizon":
+        "کوتاه‌مدت",
 
-        "asset_view":
-        asset_view,
+        "forex": {
 
-        "horizon":
-        horizon,
+            "EUR/USD":
+            "NEUTRAL",
 
-        "reasons":
-        list(
-            dict.fromkeys(
-                reasons
-            )
-        )
+            "GBP/USD":
+            "NEUTRAL",
+
+            "USD/JPY":
+            "NEUTRAL",
+
+            "DXY":
+            "NEUTRAL"
+
+        },
+
+        "crypto": {
+
+            "BTC/USDT":
+            direction,
+
+            "ETH/USDT":
+            direction
+
+        },
+
+        "commodities": {
+
+            "XAU/USD":
+            direction,
+
+            "WTI":
+            "NEUTRAL"
+
+        },
+
+        "indices": {
+
+            "NASDAQ":
+            direction,
+
+            "SP500":
+            direction
+
+        },
+
+        "reason_fa":
+        "تحلیل AI در دسترس نبود؛ این نتیجه با موتور تحلیل اولیه تولید شده است."
 
     }
 
 
 # =========================================================
-# TELEGRAM MESSAGE
+# TRANSLATE AI DIRECTION
 # =========================================================
 
-def format_alert(
+def direction_fa(value):
+
+    value = str(
+        value or ""
+    ).upper()
+
+
+    if value == "BULLISH":
+        return "🟢 صعودی"
+
+    if value == "BEARISH":
+        return "🔴 نزولی"
+
+    if value == "VOLATILE":
+        return "🟡 نوسانی"
+
+    return "⚪ خنثی"
+
+
+# =========================================================
+# FORMAT TELEGRAM
+# =========================================================
+
+def format_ai_alert(
     article,
     analysis
 ):
 
-    if analysis[
-        "impact"
-    ] >= 9:
+    impact = float(
+        analysis.get(
+            "impact",
+            0
+        )
+    )
+
+
+    if impact >= 9:
 
         level = (
             "🚨 هشدار بحرانی بازار"
         )
 
-    elif analysis[
-        "impact"
-    ] >= 7:
+    elif impact >= 7:
 
         level = (
-            "⚡ هشدار پراثر بازار"
+            "⚡ هشدار بسیار مهم بازار"
         )
 
     else:
 
         level = (
-            "📰 خبر مؤثر بر بازار"
+            "📰 هشدار بازار"
         )
 
 
-    title_fa = translate_text(
-        article["title"]
+    title = analysis.get(
+        "persian_title"
     )
 
 
-    description_fa = translate_text(
-        article[
-            "description"
-        ][:500]
+    if not title:
+
+        title = translate_text(
+            article["title"]
+        )
+
+
+    summary = analysis.get(
+        "summary_fa"
     )
 
 
-    if not description_fa:
+    if not summary:
 
-        description_fa = (
-            "توضیحات کافی برای خلاصه خبر در دسترس نیست."
+        summary = translate_text(
+            article["description"]
         )
 
 
-    views = "\n".join(
-
-        f"{market}: {view}"
-
-        for market, view
-
-        in analysis[
-            "asset_view"
-        ].items()
-
+    forex = analysis.get(
+        "forex",
+        {}
     )
 
+    crypto = analysis.get(
+        "crypto",
+        {}
+    )
 
-    if analysis[
-        "reasons"
-    ]:
+    commodities = analysis.get(
+        "commodities",
+        {}
+    )
 
-        reason_fa = translate_text(
-
-            ", ".join(
-                analysis[
-                    "reasons"
-                ][:8]
-            )
-
-        )
-
-    else:
-
-        reason_fa = (
-            "سیگنال مشخصی شناسایی نشد."
-        )
+    indices = analysis.get(
+        "indices",
+        {}
+    )
 
 
     message = f"""
 {level}
 
-📰 {title_fa}
+📰 {title}
 
 ━━━━━━━━━━━━━━━━
 
-📊 شدت اثر بازار:
-{analysis["impact"]}/10
+📊 شدت اثر:
+{impact}/10
 
-🎯 جهت احتمالی:
-{analysis["direction"]}
+🎯 جهت کلی:
+{direction_fa(
+    analysis.get("direction")
+)}
 
-🧠 اطمینان تحلیلی:
-{analysis["confidence"]}٪
+🧠 اطمینان:
+{analysis.get(
+    "confidence",
+    0
+)}٪
 
-⏱ افق زمانی اثر:
-{analysis["horizon"]}
-
-━━━━━━━━━━━━━━━━
-
-💱 اثر احتمالی روی بازارها:
-
-{views}
-
-━━━━━━━━━━━━━━━━
-
-🔎 سیگنال‌های شناسایی‌شده:
-
-{reason_fa}
+⏱ افق زمانی:
+{analysis.get(
+    "time_horizon",
+    "نامشخص"
+)}
 
 ━━━━━━━━━━━━━━━━
 
-📝 خلاصه خبر:
+💱 FOREX
 
-{description_fa}
+EUR/USD: {direction_fa(
+    forex.get("EUR/USD")
+)}
+
+GBP/USD: {direction_fa(
+    forex.get("GBP/USD")
+)}
+
+USD/JPY: {direction_fa(
+    forex.get("USD/JPY")
+)}
+
+DXY: {direction_fa(
+    forex.get("DXY")
+)}
 
 ━━━━━━━━━━━━━━━━
 
-⚠️ این پیام یک تحلیل خبری خودکار است.
-جهت بازار قطعی نیست و تضمین سود یا توصیه قطعی معامله محسوب نمی‌شود.
+₿ CRYPTO
+
+BTC/USDT: {direction_fa(
+    crypto.get("BTC/USDT")
+)}
+
+ETH/USDT: {direction_fa(
+    crypto.get("ETH/USDT")
+)}
+
+━━━━━━━━━━━━━━━━
+
+🥇 COMMODITIES
+
+XAU/USD: {direction_fa(
+    commodities.get("XAU/USD")
+)}
+
+WTI: {direction_fa(
+    commodities.get("WTI")
+)}
+
+━━━━━━━━━━━━━━━━
+
+📈 INDICES
+
+NASDAQ: {direction_fa(
+    indices.get("NASDAQ")
+)}
+
+S&P 500: {direction_fa(
+    indices.get("SP500")
+)}
+
+━━━━━━━━━━━━━━━━
+
+🧠 تحلیل:
+
+{analysis.get(
+    "reason_fa",
+    ""
+)}
+
+━━━━━━━━━━━━━━━━
+
+📝 خلاصه:
+
+{summary}
+
+━━━━━━━━━━━━━━━━
+
+⚠️ تحلیل خودکار است.
+این پیام تضمین سود یا توصیه قطعی معامله نیست.
 
 📰 منبع:
 {article["link"]}
@@ -1216,32 +1066,32 @@ def format_alert(
 def main():
 
     print(
-        "================================"
+        "======================================"
     )
 
     print(
-        "       AI MARKET RADAR"
+        "       AI MARKET RADAR STARTED"
     )
 
     print(
-        "================================"
+        "======================================"
     )
 
 
     state = load_state()
 
 
-    total_articles = 0
+    total = 0
 
     new_articles = 0
 
-    alerts_sent = 0
+    alerts = 0
 
 
     threshold = float(
         CONFIG.get(
             "impact_threshold",
-            6.0
+            7
         )
     )
 
@@ -1254,10 +1104,6 @@ def main():
     )
 
 
-    # =====================================================
-    # FETCH NEWS
-    # =====================================================
-
     for feed in CONFIG.get(
         "feeds",
         []
@@ -1268,7 +1114,6 @@ def main():
             data = fetch_feed(
                 feed
             )
-
 
             articles = parse_feed(
                 data
@@ -1285,37 +1130,27 @@ def main():
 
             print(
                 "FEED ERROR:",
-                feed
-            )
-
-            print(
                 error
             )
 
             continue
 
 
-        total_articles += (
-            len(articles)
+        total += len(
+            articles
         )
 
 
-        # =================================================
-        # PROCESS
-        # =================================================
-
         for article in articles:
 
-            uid = get_article_id(
+            uid = article_id(
                 article
             )
 
 
-            if uid in (
-                state[
-                    "seen"
-                ]
-            ):
+            if uid in state[
+                "seen"
+            ]:
 
                 continue
 
@@ -1323,30 +1158,28 @@ def main():
             new_articles += 1
 
 
-            analysis = analyze(
+            impact = calculate_impact(
                 article
             )
 
 
-            impact = analysis[
-                "impact"
-            ]
-
+            print(
+                "--------------------------------"
+            )
 
             print(
-                f"NEWS: "
-                f"{article['title'][:100]}"
+                article["title"]
+            )
+
+            print(
+                f"Initial impact: "
+                f"{impact}/10"
             )
 
 
-            print(
-                f"IMPACT: {impact}/10"
-            )
-
-
-            # =================================================
+            # -----------------------------------------
             # LOW IMPACT
-            # =================================================
+            # -----------------------------------------
 
             if impact < threshold:
 
@@ -1359,20 +1192,57 @@ def main():
                 continue
 
 
-            # =================================================
-            # ALERT LIMIT
-            # =================================================
+            # -----------------------------------------
+            # LIMIT
+            # -----------------------------------------
 
-            if alerts_sent >= max_alerts:
+            if alerts >= max_alerts:
 
                 continue
 
 
-            # =================================================
-            # SEND
-            # =================================================
+            # -----------------------------------------
+            # AI
+            # -----------------------------------------
 
-            message = format_alert(
+            print(
+                "Running AI Analyst..."
+            )
+
+
+            analysis = ai_analyze(
+                article
+            )
+
+
+            # -----------------------------------------
+            # FINAL FILTER
+            # -----------------------------------------
+
+            final_impact = float(
+                analysis.get(
+                    "impact",
+                    impact
+                )
+            )
+
+
+            if final_impact < threshold:
+
+                state[
+                    "seen"
+                ].append(
+                    uid
+                )
+
+                continue
+
+
+            # -----------------------------------------
+            # SEND TELEGRAM
+            # -----------------------------------------
+
+            message = format_ai_alert(
                 article,
                 analysis
             )
@@ -1385,7 +1255,7 @@ def main():
                 )
 
 
-                alerts_sent += 1
+                alerts += 1
 
 
                 state[
@@ -1396,7 +1266,7 @@ def main():
 
 
                 print(
-                    "ALERT SENT"
+                    "AI ALERT SENT"
                 )
 
 
@@ -1408,39 +1278,30 @@ def main():
                 )
 
 
-    # =====================================================
-    # SAVE STATE
-    # =====================================================
-
     save_state(
         state
     )
 
 
     print(
-        "================================"
+        "======================================"
     )
 
     print(
-        f"TOTAL ARTICLES: "
-        f"{total_articles}"
+        f"TOTAL ARTICLES: {total}"
     )
 
     print(
-        f"NEW ARTICLES: "
-        f"{new_articles}"
+        f"NEW ARTICLES: {new_articles}"
     )
 
     print(
-        f"ALERTS SENT: "
-        f"{alerts_sent}"
+        f"AI ALERTS SENT: {alerts}"
     )
 
     print(
-        "================================"
-    )
+        "======================================")
 
 
 if __name__ == "__main__":
-
     main()
