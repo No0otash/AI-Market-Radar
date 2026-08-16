@@ -1,18 +1,18 @@
 {
-  "news_min_score": 4.0,
+  "news_min_score": 3.5,
   "alert_min_score": 5.5,
   "max_alerts_per_run": 8,
 
   "feeds": [
 
     {
-      "name": "BBC World",
-      "url": "https://feeds.bbci.co.uk/news/world/rss.xml"
+      "name": "Reuters",
+      "url": "https://feeds.reuters.com/reuters/topNews"
     },
 
     {
-      "name": "BBC Business",
-      "url": "https://feeds.bbci.co.uk/news/business/rss.xml"
+      "name": "Reuters Business",
+      "url": "https://feeds.reuters.com/reuters/businessNews"
     },
 
     {
@@ -21,8 +21,13 @@
     },
 
     {
-      "name": "Reuters Business",
-      "url": "https://feeds.reuters.com/reuters/businessNews"
+      "name": "BBC Business",
+      "url": "https://feeds.bbci.co.uk/news/business/rss.xml"
+    },
+
+    {
+      "name": "BBC World",
+      "url": "https://feeds.bbci.co.uk/news/world/rss.xml"
     },
 
     {
