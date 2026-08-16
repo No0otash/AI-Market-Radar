@@ -1,6 +1,7 @@
 name: AI Market Radar
 
 on:
+
   workflow_dispatch:
 
   schedule:
@@ -19,18 +20,10 @@ jobs:
 
     steps:
 
-      # ==========================================
-      # DOWNLOAD PROJECT
-      # ==========================================
-
       - name: Checkout repository
 
         uses: actions/checkout@v4
 
-
-      # ==========================================
-      # PYTHON
-      # ==========================================
 
       - name: Setup Python
 
@@ -40,10 +33,6 @@ jobs:
           python-version: "3.12"
 
 
-      # ==========================================
-      # RUN MARKET RADAR
-      # ==========================================
-
       - name: Run AI Market Radar
 
         env:
@@ -52,11 +41,13 @@ jobs:
 
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+
         run: |
 
           echo "======================================"
 
-          echo "      AI MARKET RADAR STARTING"
+          echo "       AI MARKET RADAR"
 
           echo "======================================"
 
@@ -64,14 +55,10 @@ jobs:
 
           echo "======================================"
 
-          echo "      AI MARKET RADAR FINISHED"
+          echo "       RADAR FINISHED"
 
           echo "======================================"
 
-
-      # ==========================================
-      # SAVE NEWS DATABASE
-      # ==========================================
 
       - name: Save radar state
 
@@ -83,6 +70,6 @@ jobs:
 
           git add state.json
 
-          git diff --cached --quiet || git commit -m "Update market radar state"
+          git diff --cached --quiet || git commit -m "Update radar state"
 
           git push
