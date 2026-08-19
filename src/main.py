@@ -7,13 +7,14 @@ import urllib.request
 import urllib.parse
 import urllib.error
 import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
 
 
 # ============================================================
 # AI MARKET RADAR
-# NEWS + AI + WHALE ALERT + TELEGRAM
-# MARKET SNAPSHOT
-# FREE MARKET USD / TOMAN
+# NEWS + AI + WHALE CHANNEL + WHALE ALERT API
+# TGJU USD + GOLD
+# TELEGRAM BROADCAST
 # ============================================================
 
 
@@ -39,7 +40,7 @@ CHAT_ID = os.getenv(
 
 CHANNEL_ID = os.getenv(
     "TELEGRAM_CHANNEL_ID",
-    ""
+    "@HuntFlo"
 ).strip()
 
 HF_TOKEN = os.getenv(
@@ -62,25 +63,33 @@ COINGECKO_API_KEY = os.getenv(
     ""
 ).strip()
 
-METALS_API_KEY = os.getenv(
-    "METALS_API_KEY",
-    ""
-).strip()
-
-NAVASAN_API_KEY = os.getenv(
-    "NAVASAN_API_KEY",
-    ""
-).strip()
-
-USD_IRR_API_URL = os.getenv(
-    "USD_IRR_API_URL",
-    ""
-).strip()
-
 MARKET_SNAPSHOT_ENABLED = os.getenv(
     "MARKET_SNAPSHOT_ENABLED",
     "true"
 ).strip().lower() == "true"
+
+
+# ============================================================
+# CONSTANTS
+# ============================================================
+
+MY_CHANNEL = "@HuntFlo"
+MY_BOT = "@notash_news_bot"
+
+SOURCE_WHALE_CHANNEL = "@whale_alert_io"
+
+TGJU_BASE_URL = "https://www.tgju.org"
+
+TGJU_PROFILES = {
+    "usd": "/profile/price_dollar_rl",
+    "gold18": "/profile/tgju_gold_irg18"
+}
+
+MARKET_UPDATE_HOURS = 5
+
+TELEGRAM_MAX_LENGTH = 3900
+
+WHALE_CHANNEL_MAX_MESSAGES = 5
 
 
 # ============================================================
@@ -103,13 +112,16 @@ if not CHAT_ID:
 # ============================================================
 
 try:
+
     with open(
         "config.json",
         encoding="utf-8"
     ) as f:
+
         CONFIG = json.load(f)
 
 except Exception as error:
+
     raise RuntimeError(
         f"Unable to load config.json: {error}"
     )
@@ -148,14 +160,27 @@ def clean_text(text):
     )
 
     text = re.sub(
+        r"<br\s*/?>",
+        "\n",
+        text,
+        flags=re.IGNORECASE
+    )
+
+    text = re.sub(
         r"<[^>]+>",
         " ",
         text
     )
 
     text = re.sub(
-        r"\s+",
+        r"[ \t]+",
         " ",
+        text
+    )
+
+    text = re.sub(
+        r"\n{3,}",
+        "\n\n",
         text
     )
 
@@ -184,6 +209,7 @@ def clean_telegram_target(target):
     if target.startswith(
         "https://t.me/"
     ):
+
         target = (
             "@"
             + target.split(
@@ -195,6 +221,7 @@ def clean_telegram_target(target):
     elif target.startswith(
         "http://t.me/"
     ):
+
         target = (
             "@"
             + target.split(
@@ -206,6 +233,7 @@ def clean_telegram_target(target):
     elif target.startswith(
         "t.me/"
     ):
+
         target = (
             "@"
             + target.split(
@@ -215,6 +243,62 @@ def clean_telegram_target(target):
         )
 
     return target
+
+
+# ============================================================
+# TELEGRAM MESSAGE SPLITTER
+# ============================================================
+
+def split_telegram_message(
+    message,
+    max_length=TELEGRAM_MAX_LENGTH
+):
+
+    if not message:
+        return []
+
+    if len(message) <= max_length:
+        return [message]
+
+    parts = []
+
+    remaining = message
+
+    while len(remaining) > max_length:
+
+        cut = remaining.rfind(
+            "\n",
+            0,
+            max_length
+        )
+
+        if cut < 1000:
+
+            cut = remaining.rfind(
+                " ",
+                0,
+                max_length
+            )
+
+        if cut < 1000:
+
+            cut = max_length
+
+        parts.append(
+            remaining[:cut].strip()
+        )
+
+        remaining = (
+            remaining[cut:]
+            .strip()
+        )
+
+    if remaining:
+        parts.append(
+            remaining
+        )
+
+    return parts
 
 
 # ============================================================
@@ -262,11 +346,12 @@ def send_telegram(
             "charset=UTF-8",
 
             "User-Agent":
-            "AI-Market-Radar/2.0"
+            "AI-Market-Radar/3.0"
         }
     )
 
     try:
+
         with urllib.request.urlopen(
             request,
             timeout=30
@@ -286,6 +371,7 @@ def send_telegram(
         error_body = ""
 
         try:
+
             error_body = (
                 error
                 .read()
@@ -294,6 +380,7 @@ def send_telegram(
                     errors="replace"
                 )
             )
+
         except Exception:
             pass
 
@@ -311,6 +398,7 @@ def send_telegram(
         ) from error
 
     try:
+
         result = json.loads(
             raw_response
         )
@@ -327,8 +415,7 @@ def send_telegram(
 
         raise RuntimeError(
             f"{target_name}: Telegram API "
-            f"rejected message: "
-            f"{result}"
+            f"rejected message: {result}"
         )
 
     return result
@@ -345,28 +432,41 @@ def broadcast(message):
     print("TELEGRAM BROADCAST")
     print("================================")
 
+    parts = split_telegram_message(
+        message
+    )
+
+    # --------------------------------------------------------
+    # PERSONAL
+    # --------------------------------------------------------
+
     try:
 
-        result = send_telegram(
-            message,
-            CHAT_ID,
-            "Personal Chat"
-        )
+        for index, part in enumerate(
+            parts,
+            start=1
+        ):
 
-        message_id = (
-            result
-            .get("result", {})
-            .get("message_id", "unknown")
-        )
+            result = send_telegram(
+                part,
+                CHAT_ID,
+                "Personal Chat"
+            )
 
-        print(
-            "PERSONAL CHAT: OK"
-        )
+            message_id = (
+                result
+                .get("result", {})
+                .get(
+                    "message_id",
+                    "unknown"
+                )
+            )
 
-        print(
-            "Personal message_id:",
-            message_id
-        )
+            print(
+                f"PERSONAL CHAT: OK "
+                f"{index}/{len(parts)} "
+                f"| message_id={message_id}"
+            )
 
     except Exception as error:
 
@@ -376,18 +476,14 @@ def broadcast(message):
 
         print(error)
 
+    # --------------------------------------------------------
+    # CHANNEL
+    # --------------------------------------------------------
+
     if not CHANNEL_ID:
 
         print(
             "CHANNEL: NOT CONFIGURED"
-        )
-
-        print(
-            "TELEGRAM_CHANNEL_ID is empty"
-        )
-
-        print(
-            "================================"
         )
 
         return
@@ -396,33 +492,33 @@ def broadcast(message):
         CHANNEL_ID
     )
 
-    print(
-        "Channel target:",
-        channel_target
-    )
-
     try:
 
-        result = send_telegram(
-            message,
-            channel_target,
-            "Channel"
-        )
+        for index, part in enumerate(
+            parts,
+            start=1
+        ):
 
-        message_id = (
-            result
-            .get("result", {})
-            .get("message_id", "unknown")
-        )
+            result = send_telegram(
+                part,
+                channel_target,
+                "Channel"
+            )
 
-        print(
-            "CHANNEL: OK"
-        )
+            message_id = (
+                result
+                .get("result", {})
+                .get(
+                    "message_id",
+                    "unknown"
+                )
+            )
 
-        print(
-            "Channel message_id:",
-            message_id
-        )
+            print(
+                f"CHANNEL: OK "
+                f"{index}/{len(parts)} "
+                f"| message_id={message_id}"
+            )
 
     except Exception as error:
 
@@ -431,6 +527,11 @@ def broadcast(message):
         )
 
         print(error)
+
+        print(
+            "اگر خطای 403 دریافت شد، "
+            "ربات باید عضو کانال باشد."
+        )
 
     print(
         "================================"
@@ -448,9 +549,13 @@ def fetch_url(url):
         headers={
             "User-Agent":
             "Mozilla/5.0 "
-            "(compatible; AI-Market-Radar/2.0)",
+            "(Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 "
+            "(KHTML, like Gecko) "
+            "Chrome/151.0 Safari/537.36",
 
             "Accept":
+            "text/html, "
             "application/rss+xml, "
             "application/xml, "
             "text/xml, "
@@ -477,14 +582,16 @@ def get_json(
 ):
 
     request_headers = {
+
         "User-Agent":
-        "AI-Market-Radar/2.0",
+        "AI-Market-Radar/3.0",
 
         "Accept":
         "application/json"
     }
 
     if headers:
+
         request_headers.update(
             headers
         )
@@ -499,12 +606,18 @@ def get_json(
         timeout=30
     ) as response:
 
-        raw = response.read().decode(
-            "utf-8",
-            errors="replace"
+        raw = (
+            response
+            .read()
+            .decode(
+                "utf-8",
+                errors="replace"
+            )
         )
 
-        return json.loads(raw)
+        return json.loads(
+            raw
+        )
 
 
 # ============================================================
@@ -549,10 +662,18 @@ def parse_rss(
             continue
 
         articles.append({
-            "title": title,
-            "link": link,
-            "description": description,
-            "source": source
+
+            "title":
+            title,
+
+            "link":
+            link,
+
+            "description":
+            description,
+
+            "source":
+            source
         })
 
     return articles
@@ -571,17 +692,27 @@ def load_state():
             encoding="utf-8"
         ) as f:
 
-            state = json.load(f)
+            state = json.load(
+                f
+            )
 
         if "seen" not in state:
             state["seen"] = []
+
+        if "whale_channel_seen" not in state:
+            state["whale_channel_seen"] = []
 
         return state
 
     except Exception:
 
         return {
-            "seen": []
+
+            "seen": [],
+
+            "whale_channel_seen": [],
+
+            "last_market_snapshot": ""
         }
 
 
@@ -590,6 +721,13 @@ def save_state(state):
     state["seen"] = (
         state.get(
             "seen",
+            []
+        )
+    )[-5000:]
+
+    state["whale_channel_seen"] = (
+        state.get(
+            "whale_channel_seen",
             []
         )
     )[-5000:]
@@ -609,7 +747,7 @@ def save_state(state):
 
 
 # ============================================================
-# HASH ID
+# HASH
 # ============================================================
 
 def make_id(text):
@@ -700,101 +838,144 @@ def calculate_score(article):
 
 
 # ============================================================
-# AI ANALYSIS
+# AI CLIENT
 # ============================================================
 
-def ai_analyze(
-    article,
-    score
-):
+def get_ai_client():
 
     if not HF_TOKEN:
+        return None
+
+    if InferenceClient is None:
+        return None
+
+    try:
+
+        return InferenceClient(
+            provider="auto",
+            api_key=HF_TOKEN
+        )
+
+    except Exception as error:
 
         print(
-            "HF_TOKEN missing - "
-            "using fallback analysis"
+            "AI CLIENT ERROR:",
+            error
         )
 
         return None
 
-    if InferenceClient is None:
+
+# ============================================================
+# NEWS AI ANALYSIS
+# ============================================================
+
+def ai_analyze_news(
+    article,
+    score
+):
+
+    client = get_ai_client()
+
+    if client is None:
 
         print(
-            "huggingface_hub unavailable"
+            "AI unavailable - "
+            "fallback mode"
         )
 
         return None
 
     prompt = f"""
-تو یک تحلیلگر ارشد بازارهای مالی
-و ارز دیجیتال هستی.
+تو یک تحلیلگر ارشد بازارهای مالی،
+فارکس و کریپتو هستی.
 
 خبر:
 
+عنوان:
 {article["title"]}
 
+متن:
 {article["description"]}
 
-امتیاز اولیه:
+امتیاز اولیه اهمیت:
 {score}/10
 
-لطفاً تحلیل کاملاً فارسی،
-روان و قابل فهم ارائه بده.
+تحلیل را به فارسی ارائه کن.
 
-ساختار پاسخ:
+مهم:
+تحلیل را حذف یا بیش از حد کوتاه نکن.
+اما از مقدمه و تکرار غیرضروری خودداری کن.
 
-📌 خلاصه خبر
+ساختار:
+
+📌 خلاصه
+خلاصه دقیق خبر در 2 تا 4 جمله.
 
 🎯 چرا مهم است؟
+مهم‌ترین دلیل تأثیرگذاری خبر.
 
-📈 اثر احتمالی روی بیت‌کوین BTC
+📈 کریپتو
+اثر احتمالی روی BTC و ETH.
 
-💵 اثر احتمالی روی دلار
+💵 دلار / فارکس
+اثر احتمالی روی دلار و بازار ارز.
 
-🥇 اثر احتمالی روی طلا
+🥇 طلا
+اثر احتمالی روی طلا.
 
-🛢 اثر احتمالی روی نفت
+🛢 نفت
+در صورت ارتباط با خبر، اثر احتمالی نفت.
 
-📊 اثر احتمالی روی بازار سهام
+📊 سهام
+در صورت ارتباط، اثر احتمالی بازار سهام.
 
-🧭 جهت احتمالی بازار
+🧭 جهت احتمالی
+مثبت / منفی / خنثی + دلیل.
 
-⏱ بازه زمانی اثر
+⏱ بازه اثر
+کوتاه‌مدت / میان‌مدت / بلندمدت.
 
-🎯 میزان اطمینان
+🎯 اطمینان
+درصد تقریبی اطمینان تحلیل.
 
-⚠️ هشدار ریسک
+⚠️ ریسک
+مهم‌ترین چیزی که می‌تواند تحلیل را تغییر دهد.
 
-هیچ نتیجه‌ای را قطعی معرفی نکن.
 سیگنال خرید یا فروش قطعی صادر نکن.
+هیچ پیش‌بینی‌ای را قطعی معرفی نکن.
 """
 
     try:
 
-        client = InferenceClient(
-            provider="auto",
-            api_key=HF_TOKEN
-        )
-
         response = client.chat_completion(
+
             model=AI_MODEL,
+
             messages=[
+
                 {
-                    "role": "system",
+                    "role":
+                    "system",
+
                     "content":
-                    "تو تحلیلگر حرفه‌ای "
+                    "تو یک تحلیلگر حرفه‌ای "
                     "بازارهای مالی هستی. "
-                    "باید فارسی، واضح، "
-                    "ساده و مسئولانه "
-                    "پاسخ بدهی."
+                    "فارسی روان و دقیق بنویس."
                 },
+
                 {
-                    "role": "user",
-                    "content": prompt
+                    "role":
+                    "user",
+
+                    "content":
+                    prompt
                 }
             ],
+
             temperature=0.1,
-            max_tokens=1200
+
+            max_tokens=1400
         )
 
         return (
@@ -802,12 +983,13 @@ def ai_analyze(
             .choices[0]
             .message
             .content
+            .strip()
         )
 
     except Exception as error:
 
         print(
-            "AI ERROR:",
+            "AI NEWS ERROR:",
             error
         )
 
@@ -842,49 +1024,411 @@ def build_news_message(
             "🟢 سطح ۱ | قابل توجه"
         )
 
-    ai_text = (
-        analysis
-        if analysis
-        else
-        "تحلیل AI در دسترس نیست."
-    )
+    if not analysis:
+
+        analysis = (
+            "تحلیل AI در این اجرا "
+            "در دسترس نبود."
+        )
+
+    footer = f"""
+━━━━━━━━━━━━━━━━━━━━
+📡 {MY_CHANNEL}
+🤖 {MY_BOT}
+"""
 
     return f"""
-━━━━━━━━━━━━━━━━━━━━
-🤖 AI MARKET RADAR
-{level}
-━━━━━━━━━━━━━━━━━━━━
+🤖 AI MARKET RADAR | {level}
 
-📰 خبر:
+📰 {article["title"]}
 
-{article["title"]}
-
-📊 امتیاز اهمیت:
-{score}/10
+📊 اهمیت: {score}/10
 
 ━━━━━━━━━━━━━━━━━━━━
-🧠 تحلیل هوشمند
+🧠 تحلیل AI
 ━━━━━━━━━━━━━━━━━━━━
 
-{ai_text}
+{analysis}
 
 ━━━━━━━━━━━━━━━━━━━━
-
-📰 منبع:
-{article["source"]}
+📰 منبع: {article["source"]}
 
 🔗 {article["link"]}
 
-⚠️ این تحلیل احتمالی است
-و تضمین سود یا سیگنال قطعی
-خرید و فروش نیست.
-
-━━━━━━━━━━━━━━━━━━━━
-"""
+⚠️ تحلیل احتمالی است و سیگنال قطعی
+خرید یا فروش محسوب نمی‌شود.
+{footer}
+""".strip()
 
 
 # ============================================================
-# WHALE ALERT
+# PUBLIC TELEGRAM CHANNEL
+# WHALE ALERT SOURCE
+# ============================================================
+
+def fetch_public_channel_messages():
+
+    channel_username = (
+        SOURCE_WHALE_CHANNEL
+        .replace("@", "")
+        .strip()
+    )
+
+    url = (
+        "https://t.me/s/"
+        + channel_username
+    )
+
+    print(
+        "FETCHING PUBLIC TELEGRAM CHANNEL:",
+        SOURCE_WHALE_CHANNEL
+    )
+
+    try:
+
+        raw = fetch_url(
+            url
+        )
+
+        page = raw.decode(
+            "utf-8",
+            errors="replace"
+        )
+
+    except Exception as error:
+
+        print(
+            "PUBLIC CHANNEL ERROR:",
+            error
+        )
+
+        return []
+
+    messages = []
+
+    # --------------------------------------------------------
+    # Message blocks
+    # --------------------------------------------------------
+
+    blocks = re.findall(
+        r'<div class="tgme_widget_message_wrap.*?'
+        r'</div>\s*</div>',
+        page,
+        flags=re.DOTALL
+    )
+
+    for block in blocks:
+
+        # message id
+        message_match = re.search(
+            r'data-post="'
+            + re.escape(channel_username)
+            + r'/(\d+)"',
+            block
+        )
+
+        if not message_match:
+            continue
+
+        message_id = (
+            message_match.group(1)
+        )
+
+        # message text
+        text_match = re.search(
+            r'<div class="tgme_widget_message_text[^>]*>'
+            r'(.*?)'
+            r'</div>',
+            block,
+            flags=re.DOTALL
+        )
+
+        if text_match:
+
+            text = clean_text(
+                text_match.group(1)
+            )
+
+        else:
+
+            text = ""
+
+        # message link
+        link = (
+            f"https://t.me/"
+            f"{channel_username}/"
+            f"{message_id}"
+        )
+
+        if not text:
+            continue
+
+        messages.append({
+
+            "id":
+            message_id,
+
+            "text":
+            text,
+
+            "link":
+            link,
+
+            "source":
+            SOURCE_WHALE_CHANNEL
+        })
+
+    # newest first
+    messages.reverse()
+
+    return messages[
+        :WHALE_CHANNEL_MAX_MESSAGES
+    ]
+
+
+# ============================================================
+# AI WHALE CHANNEL
+# TRANSLATION + ANALYSIS
+# ============================================================
+
+def ai_analyze_whale_channel(
+    original_text
+):
+
+    client = get_ai_client()
+
+    if client is None:
+
+        print(
+            "AI unavailable for "
+            "Whale channel"
+        )
+
+        return None
+
+    prompt = f"""
+پیام زیر دقیقاً از کانال عمومی
+Whale Alert دریافت شده است.
+
+پیام اصلی:
+
+----------------
+{original_text}
+----------------
+
+وظیفه:
+
+1. ابتدا پیام را به فارسی ترجمه کن.
+ترجمه باید وفادار به متن اصلی باشد.
+اطلاعات، عددها، نام‌ها، آدرس‌ها و مقادیر
+را تغییر نده.
+
+2. سپس پیام را تحلیل کن.
+
+3. اگر پیام فقط یک انتقال بلاکچینی است،
+از روی آن خرید یا فروش قطعی نتیجه نگیر.
+
+4. اگر نام صرافی، شرکت، نهنگ یا مالک
+مشخص شده، همان نام را حفظ کن.
+
+ساختار خروجی دقیقاً:
+
+🇮🇷 ترجمه دقیق
+
+[ترجمه فارسی]
+
+━━━━━━━━━━━━━━━━━━━━
+
+🐋 تحلیل Whale Radar
+
+💰 دارایی و ارزش:
+...
+
+👤 مبدأ:
+...
+
+👤 مقصد:
+...
+
+🏦 نوع مقصد:
+صرافی / کیف پول / نامشخص
+
+🧭 برداشت احتمالی بازار:
+مثبت / منفی / خنثی / نامشخص
+
+📈 اثر احتمالی روی بازار:
+...
+
+⏱ بازه اثر:
+کوتاه‌مدت / میان‌مدت / نامشخص
+
+🎯 اطمینان:
+...%
+
+⚠️ نکته:
+...
+
+تحلیل را کامل انجام بده ولی از
+مقدمه‌گویی و تکرار جلوگیری کن.
+"""
+
+    try:
+
+        response = client.chat_completion(
+
+            model=AI_MODEL,
+
+            messages=[
+
+                {
+                    "role":
+                    "system",
+
+                    "content":
+                    "تو تحلیلگر حرفه‌ای "
+                    "تراکنش‌های بزرگ کریپتو "
+                    "و مترجم دقیق انگلیسی به فارسی هستی."
+                },
+
+                {
+                    "role":
+                    "user",
+
+                    "content":
+                    prompt
+                }
+            ],
+
+            temperature=0.1,
+
+            max_tokens=1500
+        )
+
+        return (
+            response
+            .choices[0]
+            .message
+            .content
+            .strip()
+        )
+
+    except Exception as error:
+
+        print(
+            "AI WHALE CHANNEL ERROR:",
+            error
+        )
+
+        return None
+
+
+# ============================================================
+# WHALE CHANNEL MESSAGE
+# ============================================================
+
+def build_whale_channel_message(
+    item,
+    analysis
+):
+
+    if not analysis:
+
+        analysis = (
+            "ترجمه و تحلیل AI "
+            "در دسترس نبود.\n\n"
+            + item["text"]
+        )
+
+    return f"""
+🐋 WHALE ALERT RADAR
+
+{analysis}
+
+━━━━━━━━━━━━━━━━━━━━
+📡 منبع اصلی:
+{SOURCE_WHALE_CHANNEL}
+
+🔗 {item["link"]}
+
+⚠️ انتقال بزرگ به‌تنهایی به معنی
+خرید یا فروش قطعی نیست.
+
+━━━━━━━━━━━━━━━━━━━━
+📡 {MY_CHANNEL}
+🤖 {MY_BOT}
+""".strip()
+
+
+# ============================================================
+# PROCESS WHALE CHANNEL
+# ============================================================
+
+def process_whale_channel(
+    state
+):
+
+    messages = (
+        fetch_public_channel_messages()
+    )
+
+    if not messages:
+
+        print(
+            "No public Whale Alert messages found."
+        )
+
+        return 0
+
+    sent = 0
+
+    for item in messages:
+
+        identifier = make_id(
+            "PUBLIC_WHALE|"
+            + item["id"]
+        )
+
+        if identifier in state[
+            "whale_channel_seen"
+        ]:
+
+            continue
+
+        print(
+            "NEW WHALE CHANNEL MESSAGE:",
+            item["id"]
+        )
+
+        analysis = (
+            ai_analyze_whale_channel(
+                item["text"]
+            )
+        )
+
+        message = (
+            build_whale_channel_message(
+                item,
+                analysis
+            )
+        )
+
+        broadcast(
+            message
+        )
+
+        state[
+            "whale_channel_seen"
+        ].append(
+            identifier
+        )
+
+        sent += 1
+
+    return sent
+
+
+# ============================================================
+# WHALE ALERT API
 # ============================================================
 
 def fetch_whale_alerts():
@@ -903,6 +1447,7 @@ def fetch_whale_alerts():
     )
 
     params = {
+
         "api_key":
         WHALE_ALERT_API_KEY,
 
@@ -938,10 +1483,9 @@ def fetch_whale_alerts():
         ) != "success":
 
             print(
-                "WHALE ALERT API:"
+                "WHALE ALERT API:",
+                data
             )
-
-            print(data)
 
             return []
 
@@ -958,308 +1502,6 @@ def fetch_whale_alerts():
         )
 
         return []
-
-
-# ============================================================
-# WHALE MESSAGE
-# ============================================================
-
-def format_whale_alert(tx):
-
-    amount = safe_float(
-        tx.get(
-            "amount",
-            0
-        )
-    )
-
-    amount_usd = safe_float(
-        tx.get(
-            "amount_usd",
-            0
-        )
-    )
-
-    symbol = tx.get(
-        "symbol",
-        "UNKNOWN"
-    )
-
-    blockchain = tx.get(
-        "blockchain",
-        "Unknown"
-    )
-
-    tx_hash = tx.get(
-        "hash",
-        ""
-    )
-
-    sender = tx.get(
-        "from",
-        {}
-    )
-
-    receiver = tx.get(
-        "to",
-        {}
-    )
-
-    if isinstance(
-        sender,
-        dict
-    ):
-
-        sender_owner = (
-            sender.get(
-                "owner"
-            )
-            or
-            "نهنگ ناشناس"
-        )
-
-    else:
-
-        sender_owner = (
-            "نهنگ ناشناس"
-        )
-
-    if isinstance(
-        receiver,
-        dict
-    ):
-
-        receiver_owner = (
-            receiver.get(
-                "owner"
-            )
-            or
-            "نهنگ ناشناس"
-        )
-
-    else:
-
-        receiver_owner = (
-            "نهنگ ناشناس"
-        )
-
-    if amount_usd >= WHALE_L2_USD:
-
-        level = (
-            "🔴 سطح ۲ | "
-            "حرکت بسیار سنگین"
-        )
-
-    else:
-
-        level = (
-            "🟡 سطح ۱ | "
-            "حرکت سنگین"
-        )
-
-    if (
-        sender_owner != "نهنگ ناشناس"
-        and
-        receiver_owner == "نهنگ ناشناس"
-    ):
-
-        interpretation = (
-            "دارایی از یک موجودیت "
-            "شناخته‌شده به یک مقصد "
-            "ناشناخته منتقل شده است."
-        )
-
-    elif (
-        sender_owner == "نهنگ ناشناس"
-        and
-        receiver_owner != "نهنگ ناشناس"
-    ):
-
-        interpretation = (
-            "دارایی به یک موجودیت "
-            "شناخته‌شده منتقل شده است."
-        )
-
-    else:
-
-        interpretation = (
-            "یک انتقال بسیار بزرگ "
-            "شناسایی شده است. "
-            "جهت خرید یا فروش از "
-            "این تراکنش به‌تنهایی "
-            "قابل تعیین نیست."
-        )
-
-    return f"""
-━━━━━━━━━━━━━━━━━━━━
-🐋 WHALE ALERT
-{level}
-━━━━━━━━━━━━━━━━━━━━
-
-💰 دارایی:
-
-{symbol}
-
-🔢 مقدار:
-
-{amount:,.4f}
-
-💵 ارزش:
-
-${amount_usd:,.0f}
-
-⛓ بلاکچین:
-
-{blockchain}
-
-━━━━━━━━━━━━━━━━━━━━
-👤 طرفین تراکنش
-━━━━━━━━━━━━━━━━━━━━
-
-📤 مبدأ:
-
-{sender_owner}
-
-📥 مقصد:
-
-{receiver_owner}
-
-━━━━━━━━━━━━━━━━━━━━
-🧠 تحلیل رادار
-━━━━━━━━━━━━━━━━━━━━
-
-{interpretation}
-
-⚠️ انتقال بزرگ به‌تنهایی
-به معنی خرید یا فروش قطعی
-نیست.
-
-━━━━━━━━━━━━━━━━━━━━
-🔗 Transaction
-
-{tx_hash}
-
-━━━━━━━━━━━━━━━━━━━━
-"""
-
-
-# ============================================================
-# WELCOME TEST MESSAGE
-# ============================================================
-
-WELCOME_TEST_MESSAGE = """🤖 معرفی ابزار هوش مصنوعی ما
-
-سلام به همه!
-
-ما یک استارت‌آپ هوش مصنوعی نوپا هستیم با هدفی روشن:
-
-شناخت عمیق بازار و رهگیری لحظه‌ای
-نوسانات خبری که می‌توانند مسیر
-بازار را تغییر دهند.
-
-🧠 چطور کار می‌کنیم؟
-
-مرحله ۱ – غربالگری اولیه:
-تمام اخبار ورودی بررسی می‌شوند.
-
-مرحله ۲ – تحلیل تأثیرگذاری:
-اثر خبر روی کریپتو، فارکس و بازارهای
-مالی بررسی می‌شود.
-
-مرحله ۳ – طبقه‌بندی:
-خبرهای مهم بر اساس میزان اثرگذاری
-اولویت‌بندی می‌شوند.
-
-🎯 چشم‌انداز آینده
-
-هدف ما ساخت یک سیستم هوشمند برای
-تحلیل سریع‌تر بازار و کمک به تصمیم‌گیری
-آگاهانه‌تر معامله‌گران است.
-
-⚠️ این ابزار جایگزین مدیریت ریسک
-و تصمیم‌گیری شخصی معامله‌گر نیست.
-
-🔗 کانال تلگرام:
-@noootash
-
-🤖 ربات:
-@notash_news_bot
-"""
-
-
-def send_welcome_test_once(state):
-
-    if state.get(
-        "welcome_test_sent",
-        False
-    ):
-
-        print(
-            "Welcome test: already sent"
-        )
-
-        return False
-
-    if not CHANNEL_ID:
-
-        print(
-            "Welcome test: CHANNEL_ID missing"
-        )
-
-        return False
-
-    print(
-        "================================"
-    )
-
-    print(
-        "SENDING WELCOME TEST TO CHANNEL"
-    )
-
-    print(
-        "Channel target:",
-        CHANNEL_ID
-    )
-
-    print(
-        "================================"
-    )
-
-    try:
-
-        result = send_telegram(
-            WELCOME_TEST_MESSAGE,
-            CHANNEL_ID,
-            "Welcome Test"
-        )
-
-        print(
-            "WELCOME TEST: CHANNEL OK"
-        )
-
-        print(
-            "Telegram response:",
-            result
-        )
-
-        state[
-            "welcome_test_sent"
-        ] = True
-
-        return True
-
-    except Exception as error:
-
-        print(
-            "WELCOME TEST: CHANNEL ERROR"
-        )
-
-        print(
-            "ERROR:",
-            error
-        )
-
-        return False
 
 
 # ============================================================
@@ -1283,18 +1525,14 @@ def safe_float(
 
             value = (
                 value
-                .replace(
-                    ",",
-                    ""
-                )
-                .replace(
-                    "٬",
-                    ""
-                )
+                .replace(",", "")
+                .replace("٬", "")
                 .strip()
             )
 
-        return float(value)
+        return float(
+            value
+        )
 
     except Exception:
 
@@ -1302,36 +1540,358 @@ def safe_float(
 
 
 # ============================================================
-# NORMALIZE PRICE TO TOMAN
+# NORMALIZE DIGITS
 # ============================================================
 
-def normalize_usd_price_to_toman(
+def normalize_digits(text):
+
+    if text is None:
+        return ""
+
+    translation_table = str.maketrans(
+
+        "۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩",
+
+        "01234567890123456789"
+    )
+
+    return str(
+        text
+    ).translate(
+        translation_table
+    )
+
+
+# ============================================================
+# MARKET NUMBER
+# ============================================================
+
+def parse_market_number(
     value
 ):
 
-    price = safe_float(
+    if value is None:
+        return 0.0
+
+    value = normalize_digits(
         value
     )
 
-    if price <= 0:
+    value = (
+        value
+        .replace(",", "")
+        .replace("٬", "")
+        .replace("٫", ".")
+        .replace("ریال", "")
+        .replace("تومان", "")
+        .strip()
+    )
+
+    match = re.search(
+        r"-?\d+(?:\.\d+)?",
+        value
+    )
+
+    if not match:
         return 0.0
 
-    # ریال
-    if price >= 1_000_000:
-        return price / 10.0
+    try:
 
-    # تومان
-    return price
+        return float(
+            match.group(0)
+        )
 
+    except Exception:
 
-# ============================================================
-# MARKET SNAPSHOT
-# BTC + ETH + GOLD + SILVER + USD
-# ============================================================
+        return 0.0
 
 
 # ============================================================
-# CRYPTO PRICES
+# TGJU FETCH
+# ============================================================
+
+def fetch_tgju_page(
+    profile_path
+):
+
+    url = (
+        TGJU_BASE_URL
+        + profile_path
+    )
+
+    request = urllib.request.Request(
+
+        url,
+
+        headers={
+
+            "User-Agent":
+            "Mozilla/5.0 "
+            "(Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 "
+            "(KHTML, like Gecko) "
+            "Chrome/151.0 Safari/537.36",
+
+            "Accept":
+            "text/html,"
+            "application/xhtml+xml,"
+            "application/xml;q=0.9,"
+            "*/*;q=0.8",
+
+            "Accept-Language":
+            "fa-IR,fa;q=0.9,en;q=0.8",
+
+            "Cache-Control":
+            "no-cache"
+        }
+    )
+
+    with urllib.request.urlopen(
+        request,
+        timeout=30
+    ) as response:
+
+        return response.read().decode(
+            "utf-8",
+            errors="replace"
+        )
+
+
+# ============================================================
+# TGJU PRICE EXTRACTION
+# ============================================================
+
+def extract_tgju_current_price(
+    html_content
+):
+
+    if not html_content:
+        return 0.0
+
+    normalized = normalize_digits(
+        html_content
+    )
+
+    patterns = [
+
+        r"نرخ\s*فعلی.{0,500}?"
+        r"(\d[\d,٬\.]*)",
+
+        r"نرخ\s*فعلی\s*[:：]\s*"
+        r"(\d[\d,٬\.]*)",
+
+        r'"price"\s*:\s*"?'
+        r"(\d[\d,٬\.]*)",
+
+        r'"value"\s*:\s*"?'
+        r"(\d[\d,٬\.]*)",
+
+        r'"last"\s*:\s*"?'
+        r"(\d[\d,٬\.]*)",
+
+        r'"current"\s*:\s*"?'
+        r"(\d[\d,٬\.]*)"
+    ]
+
+    for pattern in patterns:
+
+        match = re.search(
+            pattern,
+            normalized,
+            flags=
+            re.IGNORECASE |
+            re.DOTALL
+        )
+
+        if match:
+
+            value = parse_market_number(
+                match.group(1)
+            )
+
+            if value > 0:
+
+                return value
+
+    return 0.0
+
+
+# ============================================================
+# TGJU CHANGE
+# ============================================================
+
+def extract_tgju_change(
+    html_content
+):
+
+    if not html_content:
+        return 0.0
+
+    normalized = normalize_digits(
+        html_content
+    )
+
+    patterns = [
+
+        r"درصد\s*تغییر"
+        r".{0,500}?"
+        r"(-?\d+(?:\.\d+)?)\s*%",
+
+        r"Change\s*%"
+        r".{0,300}?"
+        r"(-?\d+(?:\.\d+)?)\s*%"
+    ]
+
+    for pattern in patterns:
+
+        match = re.search(
+            pattern,
+            normalized,
+            flags=
+            re.IGNORECASE |
+            re.DOTALL
+        )
+
+        if match:
+
+            return parse_market_number(
+                match.group(1)
+            )
+
+    return 0.0
+
+
+# ============================================================
+# TGJU ITEM
+# ============================================================
+
+def fetch_tgju_item(
+    name,
+    profile_path
+):
+
+    print(
+        f"TGJU: fetching {name}..."
+    )
+
+    try:
+
+        page = fetch_tgju_page(
+            profile_path
+        )
+
+        price = (
+            extract_tgju_current_price(
+                page
+            )
+        )
+
+        change = (
+            extract_tgju_change(
+                page
+            )
+        )
+
+        if price <= 0:
+
+            print(
+                f"TGJU {name}: "
+                "price not found"
+            )
+
+            return {}
+
+        # TGJU داخلی معمولاً ریال است
+        toman_price = (
+            price / 10
+        )
+
+        print(
+            f"TGJU {name}: "
+            f"{toman_price:,.0f} تومان"
+        )
+
+        return {
+
+            "price":
+            toman_price,
+
+            "raw_price":
+            price,
+
+            "change":
+            change,
+
+            "source":
+            "TGJU",
+
+            "url":
+            TGJU_BASE_URL
+            + profile_path
+        }
+
+    except Exception as error:
+
+        print(
+            f"TGJU {name} ERROR:",
+            error
+        )
+
+        return {}
+
+
+# ============================================================
+# USD + GOLD FROM TGJU
+# ============================================================
+
+def fetch_tgju_market():
+
+    print(
+        "================================"
+    )
+
+    print(
+        "FETCHING TGJU MARKET"
+    )
+
+    print(
+        "USD + GOLD 18"
+    )
+
+    print(
+        "================================"
+    )
+
+    usd = fetch_tgju_item(
+
+        "USD FREE MARKET",
+
+        TGJU_PROFILES[
+            "usd"
+        ]
+    )
+
+    gold = fetch_tgju_item(
+
+        "GOLD 18",
+
+        TGJU_PROFILES[
+            "gold18"
+        ]
+    )
+
+    return {
+
+        "usd":
+        usd,
+
+        "gold":
+        gold
+    }
+
+
+# ============================================================
+# CRYPTO
 # ============================================================
 
 def fetch_crypto_market():
@@ -1345,8 +1905,9 @@ def fetch_crypto_market():
     )
 
     headers = {
+
         "User-Agent":
-        "AI-Market-Radar/2.0",
+        "AI-Market-Radar/3.0",
 
         "Accept":
         "application/json"
@@ -1423,460 +1984,6 @@ def fetch_crypto_market():
 
 
 # ============================================================
-# METALS
-# ============================================================
-
-def fetch_metals_market():
-
-    if not METALS_API_KEY:
-
-        print(
-            "METALS_API_KEY missing"
-        )
-
-        return {}
-
-    headers = {
-
-        "x-access-token":
-        METALS_API_KEY,
-
-        "Content-Type":
-        "application/json",
-
-        "User-Agent":
-        "AI-Market-Radar/2.0"
-    }
-
-    gold_url = (
-        "https://api.goldapi.io/api/"
-        "XAU/USD"
-    )
-
-    silver_url = (
-        "https://api.goldapi.io/api/"
-        "XAG/USD"
-    )
-
-    try:
-
-        gold = get_json(
-            gold_url,
-            headers
-        )
-
-    except Exception as error:
-
-        print(
-            "GOLD API ERROR:",
-            error
-        )
-
-        gold = {}
-
-    try:
-
-        silver = get_json(
-            silver_url,
-            headers
-        )
-
-    except Exception as error:
-
-        print(
-            "SILVER API ERROR:",
-            error
-        )
-
-        silver = {}
-
-    return {
-
-        "gold": {
-
-            "usd":
-            safe_float(
-                gold.get(
-                    "price"
-                )
-            ),
-
-            "change":
-            safe_float(
-                gold.get(
-                    "ch"
-                )
-            )
-        },
-
-        "silver": {
-
-            "usd":
-            safe_float(
-                silver.get(
-                    "price"
-                )
-            ),
-
-            "change":
-            safe_float(
-                silver.get(
-                    "ch"
-                )
-            )
-        }
-    }
-
-
-# ============================================================
-# USD FREE MARKET
-# AUTOMATIC PRICE
-# ============================================================
-
-def parse_usd_price_from_data(
-    data
-):
-
-    """
-    تلاش می‌کند قیمت دلار را از
-    ساختارهای رایج API استخراج کند.
-    """
-
-    if not isinstance(
-        data,
-        dict
-    ):
-        return 0.0, 0.0
-
-    price = 0.0
-    change = 0.0
-
-    # --------------------------------------------------------
-    # حالت‌های رایج
-    # --------------------------------------------------------
-
-    possible_price_keys = [
-        "price",
-        "value",
-        "sell",
-        "sell_price",
-        "usd",
-        "dollar",
-        "dollar_price",
-        "price_toman",
-        "price_rial"
-    ]
-
-    possible_change_keys = [
-        "change",
-        "change_24h",
-        "percent",
-        "percent_change",
-        "change_percent"
-    ]
-
-    # --------------------------------------------------------
-    # اول قیمت مستقیم
-    # --------------------------------------------------------
-
-    for key in possible_price_keys:
-
-        if key in data:
-
-            candidate = data.get(
-                key
-            )
-
-            if isinstance(
-                candidate,
-                dict
-            ):
-
-                for nested_key in [
-                    "price",
-                    "value",
-                    "sell",
-                    "sell_price",
-                    "amount",
-                    "value_rial"
-                ]:
-
-                    if nested_key in candidate:
-
-                        price = safe_float(
-                            candidate.get(
-                                nested_key
-                            )
-                        )
-
-                        if price > 0:
-                            break
-
-            else:
-
-                price = safe_float(
-                    candidate
-                )
-
-            if price > 0:
-                break
-
-    # --------------------------------------------------------
-    # تغییرات
-    # --------------------------------------------------------
-
-    for key in possible_change_keys:
-
-        if key in data:
-
-            change = safe_float(
-                data.get(
-                    key
-                )
-            )
-
-            break
-
-    # --------------------------------------------------------
-    # اگر قیمت در یک زیرساختار باشد
-    # --------------------------------------------------------
-
-    if price <= 0:
-
-        for value in data.values():
-
-            if isinstance(
-                value,
-                dict
-            ):
-
-                nested_price, nested_change = (
-                    parse_usd_price_from_data(
-                        value
-                    )
-                )
-
-                if nested_price > 0:
-
-                    price = nested_price
-
-                    if change == 0:
-                        change = nested_change
-
-                    break
-
-    # --------------------------------------------------------
-    # تبدیل ریال به تومان
-    # --------------------------------------------------------
-
-    price = normalize_usd_price_to_toman(
-        price
-    )
-
-    return price, change
-
-
-# ============================================================
-# SOURCE 1 - NAVASAN
-# ============================================================
-
-def fetch_usd_from_navasan():
-
-    if not NAVASAN_API_KEY:
-
-        print(
-            "NAVASAN_API_KEY not configured"
-        )
-
-        return {}
-
-    print(
-        "USD SOURCE 1: NAVASAN"
-    )
-
-    urls = [
-
-        (
-            "https://api.navasan.tech/"
-            "latest/?api_key="
-            + urllib.parse.quote(
-                NAVASAN_API_KEY
-            )
-        ),
-
-        (
-            "https://api.navasan.tech/"
-            "latest/"
-            "?api_key="
-            + urllib.parse.quote(
-                NAVASAN_API_KEY
-            )
-        )
-    ]
-
-    for url in urls:
-
-        try:
-
-            data = get_json(
-                url
-            )
-
-            price, change = (
-                parse_usd_price_from_data(
-                    data
-                )
-            )
-
-            if price > 0:
-
-                print(
-                    "USD SOURCE: NAVASAN"
-                )
-
-                print(
-                    "USD FREE MARKET:",
-                    f"{price:,.0f}",
-                    "Toman"
-                )
-
-                return {
-
-                    "price":
-                    price,
-
-                    "change":
-                    change,
-
-                    "source":
-                    "Navasan"
-                }
-
-        except Exception as error:
-
-            print(
-                "NAVASAN ERROR:",
-                error
-            )
-
-    return {}
-
-
-# ============================================================
-# SOURCE 2 - CUSTOM API
-# ============================================================
-
-def fetch_usd_from_custom_api():
-
-    if not USD_IRR_API_URL:
-
-        print(
-            "USD_IRR_API_URL not configured"
-        )
-
-        return {}
-
-    print(
-        "USD SOURCE 2: CUSTOM API"
-    )
-
-    try:
-
-        data = get_json(
-            USD_IRR_API_URL
-        )
-
-        price, change = (
-            parse_usd_price_from_data(
-                data
-            )
-        )
-
-        if price > 0:
-
-            print(
-                "USD SOURCE: CUSTOM API"
-            )
-
-            print(
-                "USD FREE MARKET:",
-                f"{price:,.0f}",
-                "Toman"
-            )
-
-            return {
-
-                "price":
-                price,
-
-                "change":
-                change,
-
-                "source":
-                "Custom API"
-            }
-
-    except Exception as error:
-
-        print(
-            "CUSTOM USD API ERROR:",
-            error
-        )
-
-    return {}
-
-
-# ============================================================
-# USD FREE MARKET MAIN
-# ============================================================
-
-def fetch_usd_irr():
-
-    print(
-        "================================"
-    )
-
-    print(
-        "FETCHING USD FREE MARKET"
-    )
-
-    print(
-        "================================"
-    )
-
-    # --------------------------------------------------------
-    # Source 1
-    # --------------------------------------------------------
-
-    result = fetch_usd_from_navasan()
-
-    if result:
-
-        return result
-
-    # --------------------------------------------------------
-    # Source 2
-    # --------------------------------------------------------
-
-    result = fetch_usd_from_custom_api()
-
-    if result:
-
-        return result
-
-    # --------------------------------------------------------
-    # No valid source
-    # --------------------------------------------------------
-
-    print(
-        "USD FREE MARKET:"
-        " NO VALID DATA"
-    )
-
-    return {}
-
-
-# ============================================================
 # CHANGE FORMAT
 # ============================================================
 
@@ -1906,16 +2013,25 @@ def format_change(
 
 
 # ============================================================
-# MARKET SNAPSHOT MESSAGE
+# MARKET SNAPSHOT
+# COMPACT BUT USEFUL
 # ============================================================
 
 def build_market_snapshot():
 
+    market = fetch_tgju_market()
+
     crypto = fetch_crypto_market()
 
-    metals = fetch_metals_market()
+    usd = market.get(
+        "usd",
+        {}
+    )
 
-    usd = fetch_usd_irr()
+    gold = market.get(
+        "gold",
+        {}
+    )
 
     btc = crypto.get(
         "btc",
@@ -1927,18 +2043,14 @@ def build_market_snapshot():
         {}
     )
 
-    gold = metals.get(
-        "gold",
-        {}
-    )
-
-    silver = metals.get(
-        "silver",
-        {}
-    )
-
     usd_toman = safe_float(
         usd.get(
+            "price"
+        )
+    )
+
+    gold_toman = safe_float(
+        gold.get(
             "price"
         )
     )
@@ -1955,18 +2067,6 @@ def build_market_snapshot():
         )
     )
 
-    gold_usd = safe_float(
-        gold.get(
-            "usd"
-        )
-    )
-
-    silver_usd = safe_float(
-        silver.get(
-            "usd"
-        )
-    )
-
     btc_toman = (
         btc_usd
         * usd_toman
@@ -1977,131 +2077,128 @@ def build_market_snapshot():
         * usd_toman
     )
 
-    gold_toman = (
-        gold_usd
-        * usd_toman
+    now = datetime.now(
+        timezone.utc
     )
 
-    silver_toman = (
-        silver_usd
-        * usd_toman
+    update_time = now.strftime(
+        "%Y-%m-%d %H:%M UTC"
     )
 
-    usd_source = usd.get(
-        "source",
-        "نامشخص"
+    usd_display = (
+        f"{usd_toman:,.0f} تومان"
+        if usd_toman > 0
+        else
+        "داده ناموجود"
     )
 
-    if usd_toman > 0:
+    gold_display = (
+        f"{gold_toman:,.0f} تومان"
+        if gold_toman > 0
+        else
+        "داده ناموجود"
+    )
 
-        usd_display = (
-            f"{usd_toman:,.0f} تومان"
-        )
+    btc_display = (
+        f"${btc_usd:,.0f}"
+        if btc_usd > 0
+        else
+        "ناموجود"
+    )
 
-    else:
-
-        usd_display = (
-            "داده در دسترس نیست"
-        )
+    eth_display = (
+        f"${eth_usd:,.0f}"
+        if eth_usd > 0
+        else
+        "ناموجود"
+    )
 
     return f"""
-━━━━━━━━━━━━━━━━━━━━
 📊 MARKET SNAPSHOT
-🕐 گزارش بازار
-━━━━━━━━━━━━━━━━━━━━
 
-₿ بیت‌کوین BTC
+💵 دلار آزاد:
+{usd_display}
+{format_change(usd.get("change", 0))}
 
-💵 دلار:
-${btc_usd:,.2f}
+🥇 طلای ۱۸ عیار:
+{gold_display}
+{format_change(gold.get("change", 0))}
 
-🇮🇷 تومان:
+₿ BTC:
+{btc_display}
+{format_change(btc.get("change", 0))}
+
+♦️ ETH:
+{eth_display}
+{format_change(eth.get("change", 0))}
+
+💡 ارزش تقریبی BTC:
 {btc_toman:,.0f} تومان
 
-📈 تغییر ۲۴ ساعت:
-{format_change(
-    btc.get("change", 0)
-)}
+━━━━━━━━━━━━━━━━━━━━
+🕐 بروزرسانی: هر ۵ ساعت
+📡 منبع دلار و طلا: TGJU
+📡 کریپتو: CoinGecko
+
+⚠️ قیمت‌ها لحظه‌ای هستند و بین
+دو بروزرسانی ممکن است تغییر کنند.
 
 ━━━━━━━━━━━━━━━━━━━━
+📡 {MY_CHANNEL}
+🤖 {MY_BOT}
+""".strip()
 
-♦️ اتریوم ETH
 
-💵 دلار:
-${eth_usd:,.2f}
+# ============================================================
+# MARKET SNAPSHOT TIMER
+# ============================================================
 
-🇮🇷 تومان:
-{eth_toman:,.0f} تومان
+def should_send_market_snapshot(
+    state
+):
 
-📈 تغییر ۲۴ ساعت:
-{format_change(
-    eth.get("change", 0)
-)}
+    last_time = state.get(
+        "last_market_snapshot",
+        ""
+    )
 
-━━━━━━━━━━━━━━━━━━━━
+    if not last_time:
 
-🥇 طلا XAU
+        return True
 
-🌎 انس جهانی:
-${gold_usd:,.2f}
+    try:
 
-🇮🇷 ارزش تقریبی:
-{gold_toman:,.0f} تومان
+        last = datetime.fromisoformat(
+            last_time
+        )
 
-📈 تغییر:
-{format_change(
-    gold.get("change", 0)
-)}
+        now = datetime.now(
+            timezone.utc
+        )
 
-━━━━━━━━━━━━━━━━━━━━
+        elapsed = (
+            now - last
+        ).total_seconds()
 
-🥈 نقره XAG
+        return (
+            elapsed
+            >=
+            MARKET_UPDATE_HOURS
+            * 3600
+        )
 
-🌎 انس جهانی:
-${silver_usd:,.2f}
+    except Exception:
 
-🇮🇷 ارزش تقریبی:
-{silver_toman:,.0f} تومان
-
-📈 تغییر:
-{format_change(
-    silver.get("change", 0)
-)}
-
-━━━━━━━━━━━━━━━━━━━━
-
-💵 دلار آزاد ایران
-
-🇮🇷 قیمت:
-{usd_display}
-
-📈 تغییر ۲۴ ساعت:
-{format_change(
-    usd.get("change", 0)
-)}
-
-📡 منبع:
-{usd_source}
-
-━━━━━━━━━━━━━━━━━━━━
-
-🤖 AI MARKET RADAR
-
-⏱ بروزرسانی خودکار:
-هر ۳ ساعت
-
-⚠️ قیمت‌ها ممکن است بین
-دو بروزرسانی تغییر کنند.
-
-━━━━━━━━━━━━━━━━━━━━
-"""
+        return True
 
 
 # ============================================================
 # SEND MARKET SNAPSHOT
 # ============================================================
 
-def send_market_snapshot():
+def send_market_snapshot(
+    state
+):
 
     if not MARKET_SNAPSHOT_ENABLED:
 
@@ -2109,7 +2206,18 @@ def send_market_snapshot():
             "Market Snapshot: DISABLED"
         )
 
-        return
+        return False
+
+    if not should_send_market_snapshot(
+        state
+    ):
+
+        print(
+            "Market Snapshot: "
+            "not due yet"
+        )
+
+        return False
 
     print(
         "================================"
@@ -2133,9 +2241,19 @@ def send_market_snapshot():
             message
         )
 
+        state[
+            "last_market_snapshot"
+        ] = (
+            datetime.now(
+                timezone.utc
+            ).isoformat()
+        )
+
         print(
             "MARKET SNAPSHOT: OK"
         )
+
+        return True
 
     except Exception as error:
 
@@ -2143,6 +2261,229 @@ def send_market_snapshot():
             "MARKET SNAPSHOT ERROR:",
             error
         )
+
+        return False
+
+
+# ============================================================
+# WHALE API MESSAGE
+# ============================================================
+
+def format_whale_alert(
+    tx
+):
+
+    amount = safe_float(
+        tx.get(
+            "amount",
+            0
+        )
+    )
+
+    amount_usd = safe_float(
+        tx.get(
+            "amount_usd",
+            0
+        )
+    )
+
+    symbol = tx.get(
+        "symbol",
+        "UNKNOWN"
+    )
+
+    blockchain = tx.get(
+        "blockchain",
+        "Unknown"
+    )
+
+    tx_hash = tx.get(
+        "hash",
+        ""
+    )
+
+    sender = tx.get(
+        "from",
+        {}
+    )
+
+    receiver = tx.get(
+        "to",
+        {}
+    )
+
+    sender_owner = (
+        sender.get("owner")
+        if isinstance(
+            sender,
+            dict
+        )
+        else None
+    )
+
+    receiver_owner = (
+        receiver.get("owner")
+        if isinstance(
+            receiver,
+            dict
+        )
+        else None
+    )
+
+    sender_owner = (
+        sender_owner
+        or
+        "ناشناخته"
+    )
+
+    receiver_owner = (
+        receiver_owner
+        or
+        "ناشناخته"
+    )
+
+    if amount_usd >= WHALE_L2_USD:
+
+        level = (
+            "🔴 سطح ۲ | بسیار سنگین"
+        )
+
+    else:
+
+        level = (
+            "🟡 سطح ۱ | سنگین"
+        )
+
+    if (
+        sender_owner != "ناشناخته"
+        and
+        receiver_owner == "ناشناخته"
+    ):
+
+        interpretation = (
+            "انتقال از یک موجودیت "
+            "شناخته‌شده به مقصد ناشناخته."
+        )
+
+    elif (
+        sender_owner == "ناشناخته"
+        and
+        receiver_owner != "ناشناخته"
+    ):
+
+        interpretation = (
+            "انتقال به یک موجودیت "
+            "شناخته‌شده."
+        )
+
+    else:
+
+        interpretation = (
+            "حرکت بسیار بزرگ شناسایی شده؛ "
+            "جهت خرید یا فروش قطعی نیست."
+        )
+
+    return f"""
+🐋 WHALE ALERT | {level}
+
+💰 {amount:,.4f} {symbol}
+💵 ارزش: ${amount_usd:,.0f}
+⛓ {blockchain}
+
+📤 مبدأ: {sender_owner}
+📥 مقصد: {receiver_owner}
+
+🧠 برداشت:
+{interpretation}
+
+⚠️ انتقال بزرگ به‌تنهایی سیگنال
+خرید یا فروش نیست.
+
+🔗 {tx_hash}
+
+━━━━━━━━━━━━━━━━━━━━
+📡 {MY_CHANNEL}
+🤖 {MY_BOT}
+""".strip()
+
+
+# ============================================================
+# WELCOME MESSAGE
+# ============================================================
+
+WELCOME_TEST_MESSAGE = f"""
+🤖 AI MARKET RADAR
+
+سیستم رادار هوشمند بازار فعال شد.
+
+📰 پایش اخبار مالی
+🐋 رهگیری تراکنش‌های بزرگ
+🧠 تحلیل هوش مصنوعی
+💵 پایش دلار و طلا
+📊 پایش BTC و ETH
+
+هدف سیستم:
+شناسایی سریع خبرها و حرکات مهمی
+که می‌توانند روی بازار اثر بگذارند.
+
+⚠️ اطلاعات و تحلیل‌ها احتمالی هستند
+و جایگزین مدیریت ریسک و تصمیم شخصی
+معامله‌گر نیستند.
+
+━━━━━━━━━━━━━━━━━━━━
+📡 کانال:
+{MY_CHANNEL}
+
+🤖 ربات:
+{MY_BOT}
+""".strip()
+
+
+def send_welcome_test_once(
+    state
+):
+
+    if state.get(
+        "welcome_test_sent",
+        False
+    ):
+
+        return False
+
+    if not CHANNEL_ID:
+
+        return False
+
+    print(
+        "SENDING WELCOME TEST"
+    )
+
+    try:
+
+        send_telegram(
+            WELCOME_TEST_MESSAGE,
+            CHANNEL_ID,
+            "Welcome Test"
+        )
+
+        state[
+            "welcome_test_sent"
+        ] = True
+
+        print(
+            "WELCOME TEST: OK"
+        )
+
+        return True
+
+    except Exception as error:
+
+        print(
+            "WELCOME TEST ERROR:",
+            error
+        )
+
+        return False
 
 
 # ============================================================
@@ -2168,66 +2509,48 @@ def main():
         CHAT_ID
     )
 
-    if CHANNEL_ID:
-
-        print(
-            "Telegram channel target:",
-            clean_telegram_target(
-                CHANNEL_ID
-            )
+    print(
+        "Telegram channel target:",
+        clean_telegram_target(
+            CHANNEL_ID
         )
+    )
 
-    else:
+    print(
+        "Source Whale Channel:",
+        SOURCE_WHALE_CHANNEL
+    )
 
-        print(
-            "Telegram channel target:"
-            " NOT CONFIGURED"
-        )
+    print(
+        "My Channel:",
+        MY_CHANNEL
+    )
 
-    if HF_TOKEN:
+    print(
+        "My Bot:",
+        MY_BOT
+    )
 
-        print(
-            "AI: ENABLED"
-        )
+    print(
+        "Market update:",
+        f"every {MARKET_UPDATE_HOURS} hours"
+    )
 
-    else:
+    print(
+        "AI:",
+        "ENABLED"
+        if HF_TOKEN
+        else
+        "FALLBACK"
+    )
 
-        print(
-            "AI: FALLBACK MODE"
-        )
-
-    if WHALE_ALERT_API_KEY:
-
-        print(
-            "Whale Alert API: ENABLED"
-        )
-
-    else:
-
-        print(
-            "Whale Alert API: DISABLED"
-        )
-
-    if NAVASAN_API_KEY:
-
-        print(
-            "USD Free Market: "
-            "NAVASAN ENABLED"
-        )
-
-    elif USD_IRR_API_URL:
-
-        print(
-            "USD Free Market: "
-            "CUSTOM API ENABLED"
-        )
-
-    else:
-
-        print(
-            "USD Free Market: "
-            "NO API CONFIGURED"
-        )
+    print(
+        "Whale API:",
+        "ENABLED"
+        if WHALE_ALERT_API_KEY
+        else
+        "DISABLED"
+    )
 
     print(
         "================================"
@@ -2236,7 +2559,7 @@ def main():
     state = load_state()
 
     # ========================================================
-    # WELCOME TEST
+    # WELCOME
     # ========================================================
 
     send_welcome_test_once(
@@ -2244,12 +2567,10 @@ def main():
     )
 
     total_articles = 0
-
     new_articles = 0
-
     news_alerts = 0
-
     whale_alerts = 0
+    whale_channel_alerts = 0
 
     # ========================================================
     # NEWS
@@ -2299,6 +2620,7 @@ def main():
         for article in articles:
 
             identifier = make_id(
+
                 article["link"]
                 or
                 article["title"]
@@ -2322,26 +2644,31 @@ def main():
                 article
             )
 
-            if score < float(
+            min_score = float(
                 CONFIG.get(
                     "news_min_score",
                     3.5
                 )
-            ):
-
-                continue
-
-            analysis = ai_analyze(
-                article,
-                score
             )
 
-            if score >= float(
+            alert_score = float(
                 CONFIG.get(
                     "alert_min_score",
                     5.5
                 )
-            ):
+            )
+
+            if score < min_score:
+                continue
+
+            analysis = (
+                ai_analyze_news(
+                    article,
+                    score
+                )
+            )
+
+            if score >= alert_score:
 
                 message = (
                     build_news_message(
@@ -2357,17 +2684,42 @@ def main():
 
                 news_alerts += 1
 
-                if news_alerts >= int(
+                max_alerts = int(
                     CONFIG.get(
                         "max_alerts_per_run",
                         8
                     )
+                )
+
+                if (
+                    news_alerts
+                    >=
+                    max_alerts
                 ):
 
                     break
 
     # ========================================================
-    # WHALE ALERT
+    # PUBLIC WHALE ALERT CHANNEL
+    # ========================================================
+
+    try:
+
+        whale_channel_alerts = (
+            process_whale_channel(
+                state
+            )
+        )
+
+    except Exception as error:
+
+        print(
+            "WHALE CHANNEL PROCESS ERROR:",
+            error
+        )
+
+    # ========================================================
+    # WHALE ALERT API
     # ========================================================
 
     whale_transactions = (
@@ -2421,12 +2773,15 @@ def main():
 
     # ========================================================
     # MARKET SNAPSHOT
+    # ONLY EVERY 5 HOURS
     # ========================================================
 
-    send_market_snapshot()
+    send_market_snapshot(
+        state
+    )
 
     # ========================================================
-    # SAVE STATE
+    # SAVE
     # ========================================================
 
     save_state(
@@ -2457,7 +2812,12 @@ def main():
     )
 
     print(
-        "WHALE ALERTS:",
+        "PUBLIC WHALE ALERTS:",
+        whale_channel_alerts
+    )
+
+    print(
+        "WHALE API ALERTS:",
         whale_alerts
     )
 
