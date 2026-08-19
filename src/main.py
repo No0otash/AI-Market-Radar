@@ -2266,12 +2266,11 @@ def send_market_snapshot(
 
 
 # ============================================================
-# WHALE API MESSAGE
+# WHALE ALERT MESSAGE
+# COMPACT PERSIAN FORMAT
 # ============================================================
 
-def format_whale_alert(
-    tx
-):
+def format_whale_alert(tx):
 
     amount = safe_float(
         tx.get(
@@ -2287,19 +2286,22 @@ def format_whale_alert(
         )
     )
 
-    symbol = tx.get(
-        "symbol",
+    symbol = (
+        tx.get(
+            "symbol",
+            "UNKNOWN"
+        )
+        or
         "UNKNOWN"
     )
 
-    blockchain = tx.get(
-        "blockchain",
+    blockchain = (
+        tx.get(
+            "blockchain",
+            "Unknown"
+        )
+        or
         "Unknown"
-    )
-
-    tx_hash = tx.get(
-        "hash",
-        ""
     )
 
     sender = tx.get(
@@ -2312,100 +2314,175 @@ def format_whale_alert(
         {}
     )
 
-    sender_owner = (
-        sender.get("owner")
-        if isinstance(
-            sender,
-            dict
+    # --------------------------------------------------------
+    # SENDER
+    # --------------------------------------------------------
+
+    if isinstance(
+        sender,
+        dict
+    ):
+
+        sender_owner = (
+            sender.get(
+                "owner"
+            )
+            or
+            "نهنگ ناشناخته"
         )
-        else None
-    )
 
-    receiver_owner = (
-        receiver.get("owner")
-        if isinstance(
-            receiver,
-            dict
+    else:
+
+        sender_owner = (
+            "نهنگ ناشناخته"
         )
-        else None
-    )
 
-    sender_owner = (
-        sender_owner
-        or
-        "ناشناخته"
-    )
+    # --------------------------------------------------------
+    # RECEIVER
+    # --------------------------------------------------------
 
-    receiver_owner = (
-        receiver_owner
-        or
-        "ناشناخته"
-    )
+    if isinstance(
+        receiver,
+        dict
+    ):
+
+        receiver_owner = (
+            receiver.get(
+                "owner"
+            )
+            or
+            "نهنگ ناشناخته"
+        )
+
+    else:
+
+        receiver_owner = (
+            "نهنگ ناشناخته"
+        )
+
+    # --------------------------------------------------------
+    # WHALE LEVEL
+    # --------------------------------------------------------
 
     if amount_usd >= WHALE_L2_USD:
 
         level = (
-            "🔴 سطح ۲ | بسیار سنگین"
+            "🔴 سطح ۲ | حرکت بسیار سنگین"
         )
 
     else:
 
         level = (
-            "🟡 سطح ۱ | سنگین"
+            "🟡 سطح ۱ | حرکت سنگین"
         )
 
+    # --------------------------------------------------------
+    # MARKET INTERPRETATION
+    # --------------------------------------------------------
+
     if (
-        sender_owner != "ناشناخته"
+        sender_owner != "نهنگ ناشناخته"
         and
-        receiver_owner == "ناشناخته"
+        receiver_owner == "نهنگ ناشناخته"
     ):
 
         interpretation = (
-            "انتقال از یک موجودیت "
-            "شناخته‌شده به مقصد ناشناخته."
+            "دارایی از یک موجودیت شناخته‌شده "
+            "به یک مقصد ناشناخته منتقل شده است."
+        )
+
+        market_direction = "خنثی"
+
+        market_effect = (
+            "اثر قابل توجهی قابل تأیید نیست"
         )
 
     elif (
-        sender_owner == "ناشناخته"
+        sender_owner == "نهنگ ناشناخته"
         and
-        receiver_owner != "ناشناخته"
+        receiver_owner != "نهنگ ناشناخته"
     ):
 
         interpretation = (
-            "انتقال به یک موجودیت "
-            "شناخته‌شده."
+            "دارایی به یک موجودیت شناخته‌شده "
+            "منتقل شده است."
+        )
+
+        market_direction = "خنثی"
+
+        market_effect = (
+            "اثر قابل توجهی قابل تأیید نیست"
         )
 
     else:
 
         interpretation = (
-            "حرکت بسیار بزرگ شناسایی شده؛ "
-            "جهت خرید یا فروش قطعی نیست."
+            "یک انتقال بسیار بزرگ شناسایی شده است. "
+            "از این تراکنش به‌تنهایی نمی‌توان خرید "
+            "یا فروش قطعی را نتیجه گرفت."
         )
 
+        market_direction = "خنثی"
+
+        market_effect = (
+            "هیچ تأثیر قابل توجهی قابل تأیید نیست"
+        )
+
+    # --------------------------------------------------------
+    # CONFIDENCE
+    # --------------------------------------------------------
+
+    if amount_usd >= WHALE_L2_USD:
+
+        confidence = 75
+
+    elif amount_usd >= WHALE_MIN_USD:
+
+        confidence = 60
+
+    else:
+
+        confidence = 50
+
+    # --------------------------------------------------------
+    # COMPACT MESSAGE
+    # --------------------------------------------------------
+
     return f"""
-🐋 WHALE ALERT | {level}
-
-💰 {amount:,.4f} {symbol}
-💵 ارزش: ${amount_usd:,.0f}
-⛓ {blockchain}
-
-📤 مبدأ: {sender_owner}
-📥 مقصد: {receiver_owner}
-
-🧠 برداشت:
-{interpretation}
-
-⚠️ انتقال بزرگ به‌تنهایی سیگنال
-خرید یا فروش نیست.
-
-🔗 {tx_hash}
+🐋 WHALE ALERT RADAR
+🇮🇷 ترجمه دقیق
 
 ━━━━━━━━━━━━━━━━━━━━
-📡 {MY_CHANNEL}
-🤖 {MY_BOT}
-""".strip()
+🚨 🚨 🚨 🚨 🚨 🚨 🚨 🚨
+{amount_usd:,.0f} دلار {symbol}
+از {sender_owner} به {receiver_owner} انتقال یافت
 
+━━━━━━━━━━━━━━━━━━━━
+🐋 تحلیل Whale Radar
+
+💰 دارایی و ارزش:
+{amount:,.4f} {symbol} ({amount_usd:,.0f} USD)
+
+👤 مبدأ: {sender_owner}
+👤 مقصد: {receiver_owner}
+🏦 نوع مقصد: {blockchain}
+
+🧭 برداشت احتمالی بازار: {market_direction}
+📈 اثر احتمالی روی بازار: {market_effect}
+⏱ بازه اثر: کوتاه‌مدت
+🎯 اطمینان: {confidence}%
+
+⚠️ نکته:
+{interpretation}
+
+━━━━━━━━━━━━━━━━━━━━
+⚠️ انتقال بزرگ به‌تنهایی به معنی
+خرید یا فروش قطعی نیست.
+
+━━━━━━━━━━━━━━━━━━━━
+📡 @HuntFlo
+🤖 @notash_news_bot
+""".strip()
 
 # ============================================================
 # WELCOME MESSAGE
