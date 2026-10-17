@@ -1,0 +1,56 @@
+name: Conflict Risk Monitor (additive)
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: conflict-risk-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Test monitor policy
+        run: python -m unittest discover -s tests -p 'test_conflict_risk_monitor.py'
+
+      # Cache only aggregate daily observations; raw flight positions are never stored.
+      - name: Restore risk-monitor history
+        uses: actions/cache/restore@v4
+        with:
+          path: data/conflict_risk_state.json
+          key: conflict-risk-state-${{ github.run_id }}
+          restore-keys: |
+            conflict-risk-state-
+
+      - name: Run independent conflict risk monitor
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID || '@HuntFlo' }}
+          FR24_API_TOKEN: ${{ secrets.FR24_API_TOKEN }}
+          RISK_ALERT_THRESHOLD: "70"
+          RISK_MIN_DOMAINS: "2"
+          RISK_ALERT_COOLDOWN_HOURS: "24"
+          FR24_LIMIT: "20"
+        run: python src/conflict_risk_monitor.py
+
+      - name: Save risk-monitor history
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data/conflict_risk_state.json
+          key: conflict-risk-state-${{ github.run_id }}
