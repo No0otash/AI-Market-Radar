@@ -25,6 +25,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Test monitor policy
+        run: python -m unittest tests/test_conflict_risk_monitor.py
+
       # Cache only aggregate daily observations; raw flight positions are never stored.
       - name: Restore risk-monitor history
         uses: actions/cache/restore@v4
