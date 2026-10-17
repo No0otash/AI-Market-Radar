@@ -262,7 +262,6 @@ def telegram_send(text: str) -> None:
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     body = urllib.parse.urlencode({"chat_id": CHANNEL_ID, "text": text, "disable_web_page_preview": "true"}).encode()
     req = urllib.request.Request(url, data=body, method="POST", headers={"Content-Type": "application/x-www-form-urlencoded"})
-    response = json.loads(fetch_bytes(url, {"Content-Type": "application/x-www-form-urlencoded"}, timeout=25).decode()) if False else None
     with urllib.request.urlopen(req, timeout=25) as res:
         response = json.loads(res.read().decode("utf-8", errors="replace"))
     if not response.get("ok"):
@@ -315,6 +314,8 @@ def main() -> int:
     state["daily"] = state["daily"][-45:]
     print(json.dumps({"date": today, "assessment": assessment, "news": news, "shipping": shipping, "flights": flights}, ensure_ascii=False, indent=2))
     last_alert = state.get("last_alert_at", "")
+    last_alert_score = int(state.get("last_alert_score", 0) or 0)
+    alert_active = bool(state.get("alert_active", False))
     cooldown_ok = True
     if last_alert:
         try:
@@ -322,15 +323,22 @@ def main() -> int:
             cooldown_ok = (now_utc() - last_dt).total_seconds() >= ALERT_COOLDOWN_HOURS * 3600
         except ValueError:
             cooldown_ok = True
-    if assessment["alert_eligible"] and cooldown_ok:
+    should_alert = assessment["alert_eligible"] and cooldown_ok and (
+        not alert_active or assessment["score"] >= last_alert_score + 10
+    )
+    if should_alert:
         try:
             telegram_send(build_alert(news, shipping, flights, assessment))
             state["last_alert_at"] = now_utc().isoformat()
+            state["last_alert_score"] = assessment["score"]
+            state["alert_active"] = True
             print("TELEGRAM_ALERT=sent")
         except Exception as exc:
             print(f"TELEGRAM_ALERT=failed: {type(exc).__name__}: {exc}", file=sys.stderr)
     else:
-        print(f"TELEGRAM_ALERT=not_sent (eligible={assessment['alert_eligible']}, cooldown_ok={cooldown_ok})")
+        if not assessment["alert_eligible"]:
+            state["alert_active"] = False
+        print(f"TELEGRAM_ALERT=not_sent (eligible={assessment['alert_eligible']}, cooldown_ok={cooldown_ok}, score={assessment['score']}, prior_alert_score={last_alert_score})")
     save_state(state)
     return 0
 
