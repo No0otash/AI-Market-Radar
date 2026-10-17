@@ -153,7 +153,7 @@ def collect_news() -> dict[str, Any]:
     high = [a for a in relevant if any(term in a["text"] for term in HIGH_SEVERITY_TERMS)]
     deescalation = [a for a in relevant if any(term in a["text"] for term in DEESCALATION_TERMS)]
     # A modest evidence score, capped; never a probability.
-    score = min(45, len(domains) * 8 + min(5, len(high)) * 4)
+    score = min(45, len(domains) * 10 + min(5, len(high)) * 5)
     if deescalation and not high:
         score = max(0, score - 8)
     return {
@@ -194,9 +194,9 @@ def collect_shipping() -> dict[str, Any]:
                 decline = (baseline - float(crossings)) / baseline
                 result["decline_fraction"] = round(decline, 3)
                 if decline >= 0.50:
-                    result["score"] = 20
+                    result["score"] = 25
                 elif decline >= 0.35:
-                    result["score"] = 14
+                    result["score"] = 17
                 elif decline >= 0.20:
                     result["score"] = 7
         return result
@@ -247,7 +247,7 @@ def compose_assessment(news: dict[str, Any], shipping: dict[str, Any], flights: 
     elevated_domains: list[str] = []
     if news.get("high_severity_count", 0) >= 2 and len(news.get("domains", [])) >= MIN_INDEPENDENT_DOMAINS:
         elevated_domains.append("news")
-    if shipping.get("score", 0) >= 14:
+    if shipping.get("score", 0) >= 17:
         elevated_domains.append("shipping")
     if flights.get("score", 0) >= 8:
         elevated_domains.append("aviation")
