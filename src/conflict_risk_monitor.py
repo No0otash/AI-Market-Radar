@@ -277,7 +277,7 @@ def build_alert(news: dict[str, Any], shipping: dict[str, Any], flights: dict[st
         "رویداد هدف: گسترش عمده جنگ منطقه‌ای با مشارکت آمریکا | افق پایش: ۳۰ روز",
         "",
         f"📰 اخبار: {news.get('article_count', 0)} مورد مرتبط؛ {news.get('high_severity_count', 0)} مورد با واژگان شدت بالا",
-        f"🚢 کشتیرانی هرمز: امتیاز {shipping.get('score', 0)}/20" + (f"; تغییر عبور ۲۴ساعته: {shipping.get('decline_fraction')}" if shipping.get("decline_fraction") is not None else "; خط پایه کافی نیست"),
+        f"🚢 کشتیرانی هرمز: امتیاز {shipping.get('score', 0)}/25" + (f"; تغییر عبور ۲۴ساعته: {shipping.get('decline_fraction')}" if shipping.get("decline_fraction") is not None else "; خط پایه کافی نیست"),
         f"✈️ پروازهای منطقه: امتیاز {flights.get('score', 0)}/8" + (f"; انحراف شمارش از خط پایه: {flights.get('deviation_fraction')}" if flights.get("deviation_fraction") is not None else "; خط پایه کافی نیست/منبع در دسترس نیست"),
         "",
         "این هشدار بر اساس چند خانواده داده عمومی است؛ جابه‌جایی هواپیما یا کاهش تردد کشتی به‌تنهایی نشانه قصد حمله نیست.",
