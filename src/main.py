@@ -845,23 +845,38 @@ def calculate_score(article):
 def get_ai_client():
 
     if not HF_TOKEN:
+        print(
+            "AI CONFIG ERROR: HF_TOKEN is missing or empty. "
+            "Check GitHub Actions > Settings > Secrets and variables > Actions. "
+            "The secret value is never printed."
+        )
         return None
 
     if InferenceClient is None:
+        print(
+            "AI CONFIG ERROR: huggingface_hub could not be imported. "
+            "Check the dependency installation step."
+        )
         return None
 
     try:
 
-        return InferenceClient(
+        client = InferenceClient(
             provider="auto",
             api_key=HF_TOKEN
         )
 
+        print(
+            f"AI CONFIG: HF_TOKEN is present; model={AI_MODEL}; "
+            "provider=auto. Token validity and provider quota "
+            "will be confirmed by the inference request."
+        )
+        return client
+
     except Exception as error:
 
         print(
-            "AI CLIENT ERROR:",
-            error
+            f"AI CLIENT INIT ERROR: {type(error).__name__}: {error}"
         )
 
         return None
@@ -979,19 +994,29 @@ def ai_analyze_news(
             max_tokens=1400
         )
 
-        return (
+        content = (
             response
             .choices[0]
             .message
             .content
-            .strip()
+            or ""
+        ).strip()
+
+        if not content:
+            print(
+                "AI NEWS REQUEST ERROR: provider returned an empty response."
+            )
+            return None
+
+        print(
+            f"AI NEWS REQUEST OK: generated {len(content)} characters."
         )
+        return content
 
     except Exception as error:
 
         print(
-            "AI NEWS ERROR:",
-            error
+            f"AI NEWS REQUEST ERROR: {type(error).__name__}: {error}"
         )
 
         return None
