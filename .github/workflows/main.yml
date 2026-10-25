@@ -65,6 +65,21 @@ jobs:
 
 
       # =====================================================
+      # AI TOKEN PREFLIGHT (never print secret contents)
+      # =====================================================
+
+      - name: Check AI token configuration
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          if [ -n "$HF_TOKEN" ]; then
+            echo "HF_TOKEN secret is present (value hidden)."
+          else
+            echo "::warning::HF_TOKEN secret is missing or empty; AI analysis will use fallback mode."
+          fi
+
+
+      # =====================================================
       # RUN AI MARKET RADAR
       # =====================================================
 
