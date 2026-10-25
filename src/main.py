@@ -2175,27 +2175,58 @@ def build_market_snapshot():
         "ناموجود"
     )
 
+    btc_toman_display = (
+        f"{btc_toman:,.0f} تومان"
+        if btc_toman > 0
+        else
+        "داده ناموجود"
+    )
+
+    usd_change_display = (
+        format_change(usd.get("change", 0))
+        if usd_toman > 0
+        else "⚪ تغییر ناموجود"
+    )
+
+    gold_change_display = (
+        format_change(gold.get("change", 0))
+        if gold_toman > 0
+        else "⚪ تغییر ناموجود"
+    )
+
+    btc_change_display = (
+        format_change(btc.get("change", 0))
+        if btc_usd > 0
+        else "⚪ تغییر ناموجود"
+    )
+
+    eth_change_display = (
+        format_change(eth.get("change", 0))
+        if eth_usd > 0
+        else "⚪ تغییر ناموجود"
+    )
+
     return f"""
 📊 MARKET SNAPSHOT
 
 💵 دلار آزاد:
 {usd_display}
-{format_change(usd.get("change", 0))}
+{usd_change_display}
 
 🥇 طلای ۱۸ عیار:
 {gold_display}
-{format_change(gold.get("change", 0))}
+{gold_change_display}
 
 ₿ BTC:
 {btc_display}
-{format_change(btc.get("change", 0))}
+{btc_change_display}
 
 ♦️ ETH:
 {eth_display}
-{format_change(eth.get("change", 0))}
+{eth_change_display}
 
 💡 ارزش تقریبی BTC:
-{btc_toman:,.0f} تومان
+{btc_toman_display}
 
 ━━━━━━━━━━━━━━━━━━━━
 🕐 زمان تهیه گزارش: {update_time} (تهران)
