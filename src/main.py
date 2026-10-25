@@ -1737,7 +1737,19 @@ def extract_tgju_current_price(
     if not html_content:
         return 0.0
 
-    normalized = normalize_digits(html_content)
+    visible_text = re.sub(
+        r"<script\b[^>]*>.*?</script>",
+        " ",
+        html_content,
+        flags=re.IGNORECASE | re.DOTALL
+    )
+    visible_text = re.sub(
+        r"<style\b[^>]*>.*?</style>",
+        " ",
+        visible_text,
+        flags=re.IGNORECASE | re.DOTALL
+    )
+    normalized = normalize_digits(clean_text(visible_text))
     label_pattern = r"(?:نرخ\s*فعلی|current\s*price|last\s*price)"
 
     for label_match in re.finditer(
