@@ -8,6 +8,7 @@ import urllib.parse
 import urllib.error
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 
 # ============================================================
@@ -1323,6 +1324,71 @@ Whale Alert دریافت شده است.
 
 
 # ============================================================
+# WHALE ALERT FALLBACK TRANSLATION
+# ============================================================
+
+def fallback_translate_whale(original_text):
+    """
+    Produce a Persian fallback when the AI service is unavailable.
+    Preserve transaction amounts and entity names; do not infer buy/sell.
+    """
+    text = " ".join(clean_text(original_text).split())
+
+    pattern = re.compile(
+        r"(?P<amount>[\d,]+(?:\.\d+)?)\s+"
+        r"(?P<symbol>[A-Z0-9]+)\s*"
+        r"\((?P<usd>[\d,]+(?:\.\d+)?)\s*USD\)\s+"
+        r"transferred\s+from\s+(?P<sender>.+?)\s+"
+        r"to\s+(?P<receiver>.+?)"
+        r"(?:\s+Details)?$",
+        flags=re.IGNORECASE
+    )
+    match = pattern.search(text)
+
+    if match:
+        amount = match.group("amount")
+        symbol = match.group("symbol").upper()
+        usd_value = match.group("usd")
+        sender = match.group("sender").strip().lstrip("#")
+        receiver = match.group("receiver").strip().lstrip("#")
+
+        return (
+            "🇮🇷 ترجمه فارسی (حالت جایگزین)\n\n"
+            f"مقدار انتقال: {amount} {symbol} "
+            f"(حدود {usd_value} دلار آمریکا)\n"
+            f"مبدأ: {sender}\n"
+            f"مقصد: {receiver}\n"
+            f"شرح: مقدار {amount} {symbol} از {sender} "
+            f"به {receiver} منتقل شده است.\n\n"
+            "🐋 برداشت بازار: نامشخص؛ انتقال به‌تنهایی "
+            "خرید یا فروش را ثابت نمی‌کند.\n"
+            "⚠️ سرویس هوش مصنوعی در دسترس نبود؛ "
+            "این ترجمه پایه و بدون تحلیل AI است."
+        )
+
+    # Conservative phrase-level fallback for other Whale Alert formats.
+    translated = text
+    replacements = [
+        (r"\btransferred from\b", "انتقال از"),
+        (r"\btransferred to\b", "به ... منتقل شد"),
+        (r"\btransferred\b", "منتقل شد"),
+        (r"\bto\b", "به"),
+        (r"\bfrom\b", "از"),
+        (r"\bDetails\b", "جزئیات"),
+        (r"\bUSD\b", "دلار آمریکا"),
+    ]
+    for source, target in replacements:
+        translated = re.sub(source, target, translated, flags=re.IGNORECASE)
+
+    return (
+        "🇮🇷 ترجمه پایه (حالت جایگزین)\n\n"
+        f"{translated}\n\n"
+        "⚠️ سرویس هوش مصنوعی در دسترس نبود؛ "
+        "برداشت خرید یا فروش قطعی از این انتقال انجام نشده است."
+    )
+
+
+# ============================================================
 # WHALE CHANNEL MESSAGE
 # ============================================================
 
@@ -1332,11 +1398,8 @@ def build_whale_channel_message(
 ):
 
     if not analysis:
-
-        analysis = (
-            "ترجمه و تحلیل AI "
-            "در دسترس نبود.\n\n"
-            + item["text"]
+        analysis = fallback_translate_whale(
+            item.get("text", "")
         )
 
     return f"""
@@ -1662,59 +1725,52 @@ def fetch_tgju_page(
 # ============================================================
 
 def extract_tgju_current_price(
-    html_content
+    html_content,
+    min_price=100000,
+    max_price=10000000000
 ):
-
+    """
+    Extract only a plausible price that follows an explicit current-price
+    label. Tiny unrelated numbers (for example a percent or chart value)
+    are ignored instead of being published as prices.
+    """
     if not html_content:
         return 0.0
 
-    normalized = normalize_digits(
-        html_content
-    )
+    normalized = normalize_digits(html_content)
+    label_pattern = r"(?:نرخ\s*فعلی|current\s*price|last\s*price)"
 
-    patterns = [
+    for label_match in re.finditer(
+        label_pattern,
+        normalized,
+        flags=re.IGNORECASE
+    ):
+        # The current-price value may be separated from its label by HTML.
+        segment = normalized[
+            label_match.end():label_match.end() + 1600
+        ]
 
-        r"نرخ\s*فعلی.{0,500}?"
-        r"(\d[\d,٬\.]*)",
+        for number_match in re.finditer(
+            r"\d[\d,٬\.]{0,24}",
+            segment
+        ):
+            token = number_match.group(0).strip(".,٬")
+            digits_only = re.sub(r"\D", "", token)
 
-        r"نرخ\s*فعلی\s*[:：]\s*"
-        r"(\d[\d,٬\.]*)",
+            # Current TGJU rial prices are integer values. Ignore small
+            # values such as 2 or 1.12 that may belong to chart metadata.
+            if len(digits_only) < 6:
+                continue
 
-        r'"price"\s*:\s*"?'
-        r"(\d[\d,٬\.]*)",
+            try:
+                value = float(digits_only)
+            except (TypeError, ValueError):
+                continue
 
-        r'"value"\s*:\s*"?'
-        r"(\d[\d,٬\.]*)",
-
-        r'"last"\s*:\s*"?'
-        r"(\d[\d,٬\.]*)",
-
-        r'"current"\s*:\s*"?'
-        r"(\d[\d,٬\.]*)"
-    ]
-
-    for pattern in patterns:
-
-        match = re.search(
-            pattern,
-            normalized,
-            flags=
-            re.IGNORECASE |
-            re.DOTALL
-        )
-
-        if match:
-
-            value = parse_market_number(
-                match.group(1)
-            )
-
-            if value > 0:
-
+            if min_price <= value <= max_price:
                 return value
 
     return 0.0
-
 
 # ============================================================
 # TGJU CHANGE
@@ -1780,10 +1836,14 @@ def fetch_tgju_item(
             profile_path
         )
 
-        price = (
-            extract_tgju_current_price(
-                page
-            )
+        is_usd = "USD" in name.upper()
+        minimum_raw = 100_000 if is_usd else 1_000_000
+        maximum_raw = 100_000_000 if is_usd else 10_000_000_000
+
+        price = extract_tgju_current_price(
+            page,
+            min_price=minimum_raw,
+            max_price=maximum_raw
         )
 
         change = (
@@ -1792,11 +1852,12 @@ def fetch_tgju_item(
             )
         )
 
-        if price <= 0:
+        if not (minimum_raw <= price <= maximum_raw):
 
             print(
                 f"TGJU {name}: "
-                "price not found"
+                f"invalid or missing price ({price}); "
+                "refusing to publish it"
             )
 
             return {}
@@ -2068,21 +2129,22 @@ def build_market_snapshot():
     )
 
     btc_toman = (
-        btc_usd
-        * usd_toman
+        btc_usd * usd_toman
+        if btc_usd > 0 and usd_toman > 0
+        else 0
     )
 
     eth_toman = (
-        eth_usd
-        * usd_toman
+        eth_usd * usd_toman
+        if eth_usd > 0 and usd_toman > 0
+        else 0
     )
 
-    now = datetime.now(
-        timezone.utc
-    )
+    now = datetime.now(timezone.utc)
+    tehran_now = datetime.now(ZoneInfo("Asia/Tehran"))
 
-    update_time = now.strftime(
-        "%Y-%m-%d %H:%M UTC"
+    update_time = tehran_now.strftime(
+        "%Y-%m-%d %H:%M:%S"
     )
 
     usd_display = (
@@ -2136,12 +2198,13 @@ def build_market_snapshot():
 {btc_toman:,.0f} تومان
 
 ━━━━━━━━━━━━━━━━━━━━
-🕐 بروزرسانی: هر ۵ ساعت
+🕐 زمان تهیه گزارش: {update_time} (تهران)
+🔄 ارسال گزارش: هر {MARKET_UPDATE_HOURS} ساعت
 📡 منبع دلار و طلا: TGJU
 📡 کریپتو: CoinGecko
 
-⚠️ قیمت‌ها لحظه‌ای هستند و بین
-دو بروزرسانی ممکن است تغییر کنند.
+⚠️ قیمت‌ها ممکن است بین دو گزارش تغییر کنند.
+اگر داده‌ای ناموجود باشد، عدد جایگزین یا حدسی نمایش داده نمی‌شود.
 
 ━━━━━━━━━━━━━━━━━━━━
 📡 {MY_CHANNEL}
