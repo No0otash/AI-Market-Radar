@@ -88,7 +88,10 @@ TGJU_BASE_URL = "https://www.tgju.org"
 
 TGJU_PROFILES = {
     "usd": "/profile/price_dollar_rl",
-    "gold18": "/profile/tgju_gold_irg18"
+    "gold18": "/profile/tgju_gold_irg18",
+    "coin_full": "/profile/sekee",
+    "coin_half": "/profile/nim",
+    "coin_quarter": "/profile/rob"
 }
 
 MARKET_UPDATE_HOURS = 5
@@ -1955,7 +1958,7 @@ def fetch_tgju_market():
     )
 
     print(
-        "USD + GOLD 18K PER GRAM"
+        "USD + GOLD 18K PER GRAM + FULL/HALF/QUARTER COINS"
     )
 
     print(
@@ -1980,13 +1983,37 @@ def fetch_tgju_market():
         ]
     )
 
+    coin_full = fetch_tgju_item(
+        "FULL COIN (IMAMI)",
+        TGJU_PROFILES["coin_full"]
+    )
+
+    coin_half = fetch_tgju_item(
+        "HALF COIN",
+        TGJU_PROFILES["coin_half"]
+    )
+
+    coin_quarter = fetch_tgju_item(
+        "QUARTER COIN",
+        TGJU_PROFILES["coin_quarter"]
+    )
+
     return {
 
         "usd":
         usd,
 
         "gold":
-        gold
+        gold,
+
+        "coin_full":
+        coin_full,
+
+        "coin_half":
+        coin_half,
+
+        "coin_quarter":
+        coin_quarter
     }
 
 
@@ -2133,6 +2160,10 @@ def build_market_snapshot():
         {}
     )
 
+    coin_full = market.get("coin_full", {})
+    coin_half = market.get("coin_half", {})
+    coin_quarter = market.get("coin_quarter", {})
+
     btc = crypto.get(
         "btc",
         {}
@@ -2154,6 +2185,10 @@ def build_market_snapshot():
             "price"
         )
     )
+
+    coin_full_toman = safe_float(coin_full.get("price"))
+    coin_half_toman = safe_float(coin_half.get("price"))
+    coin_quarter_toman = safe_float(coin_quarter.get("price"))
 
     btc_usd = safe_float(
         btc.get(
@@ -2198,6 +2233,26 @@ def build_market_snapshot():
         if gold_toman > 0
         else
         "داده ناموجود"
+    )
+
+    coin_full_display = (
+        f"{coin_full_toman:,.0f} تومان" if coin_full_toman > 0 else "داده ناموجود"
+    )
+    coin_half_display = (
+        f"{coin_half_toman:,.0f} تومان" if coin_half_toman > 0 else "داده ناموجود"
+    )
+    coin_quarter_display = (
+        f"{coin_quarter_toman:,.0f} تومان" if coin_quarter_toman > 0 else "داده ناموجود"
+    )
+
+    coin_full_change_display = (
+        format_change(coin_full.get("change", 0)) if coin_full_toman > 0 else "⚪ تغییر ناموجود"
+    )
+    coin_half_change_display = (
+        format_change(coin_half.get("change", 0)) if coin_half_toman > 0 else "⚪ تغییر ناموجود"
+    )
+    coin_quarter_change_display = (
+        format_change(coin_quarter.get("change", 0)) if coin_quarter_toman > 0 else "⚪ تغییر ناموجود"
     )
 
     btc_display = (
@@ -2256,6 +2311,18 @@ def build_market_snapshot():
 {gold_display}
 {gold_change_display}
 
+🪙 سکه تمام امامی:
+{coin_full_display}
+{coin_full_change_display}
+
+🪙 نیم‌سکه:
+{coin_half_display}
+{coin_half_change_display}
+
+🪙 ربع‌سکه:
+{coin_quarter_display}
+{coin_quarter_change_display}
+
 ₿ BTC:
 {btc_display}
 {btc_change_display}
@@ -2270,7 +2337,7 @@ def build_market_snapshot():
 ━━━━━━━━━━━━━━━━━━━━
 🕐 زمان تهیه گزارش: {update_time} (تهران)
 🔄 ارسال گزارش: هر {MARKET_UPDATE_HOURS} ساعت
-📡 منبع دلار و طلا: TGJU
+📡 منبع دلار، طلا و سکه: TGJU
 📡 کریپتو: CoinGecko
 
 ⚠️ قیمت‌ها ممکن است بین دو گزارش تغییر کنند.
