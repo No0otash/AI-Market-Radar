@@ -88,7 +88,7 @@ TGJU_BASE_URL = "https://www.tgju.org"
 
 TGJU_PROFILES = {
     "usd": "/profile/price_dollar_rl",
-    "gold24": "/profile/tgju_gold_irg24"
+    "gold24": "/profile/geram24"
 }
 
 MARKET_UPDATE_HOURS = 5
