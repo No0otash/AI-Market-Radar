@@ -44,9 +44,14 @@ CHANNEL_ID = os.getenv(
     "@HuntFlo"
 ).strip()
 
-HF_TOKEN = os.getenv(
-    "HF_TOKEN",
+GEMINI_API_KEY = os.getenv(
+    "GEMINI_API_KEY",
     ""
+).strip()
+
+GEMINI_MODEL = os.getenv(
+    "GEMINI_MODEL",
+    "gemini-3.5-flash-lite"
 ).strip()
 
 WHALE_ALERT_API_KEY = os.getenv(
@@ -844,41 +849,100 @@ def calculate_score(article):
 
 def get_ai_client():
 
-    if not HF_TOKEN:
+    if not GEMINI_API_KEY:
         print(
-            "AI CONFIG ERROR: HF_TOKEN is missing or empty. "
-            "Check GitHub Actions > Settings > Secrets and variables > Actions. "
+            "AI CONFIG ERROR: GEMINI_API_KEY is missing or empty. "
+            "Add it in GitHub Actions > Settings > Secrets and variables > Actions. "
             "The secret value is never printed."
         )
         return None
 
-    if InferenceClient is None:
+    print(
+        f"AI CONFIG: Gemini API key is present; model={GEMINI_MODEL}. "
+        "Key validity and free-tier quota will be confirmed by the request."
+    )
+    return GEMINI_API_KEY
+
+
+def gemini_generate(api_key, prompt, system_instruction, max_tokens):
+
+    if not api_key:
+        return None
+
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        + urllib.parse.quote(GEMINI_MODEL, safe="")
+        + ":generateContent"
+    )
+
+    payload = {
+        "systemInstruction": {
+            "parts": [{"text": system_instruction}]
+        },
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": prompt}]
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.1,
+            "maxOutputTokens": max_tokens
+        }
+    }
+
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "x-goog-api-key": api_key,
+            "User-Agent": "AI-Market-Radar/3.0"
+        }
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=45) as response:
+            result = json.loads(
+                response.read().decode("utf-8", errors="replace")
+            )
+
+        candidates = result.get("candidates") or []
+        if not candidates:
+            print(
+                "AI REQUEST ERROR: Gemini returned no candidates: "
+                + json.dumps(result.get("promptFeedback", {}), ensure_ascii=False)[:800]
+            )
+            return None
+
+        parts = candidates[0].get("content", {}).get("parts", [])
+        content = "\n".join(
+            part.get("text", "")
+            for part in parts
+            if isinstance(part, dict) and part.get("text")
+        ).strip()
+
+        if not content:
+            print("AI REQUEST ERROR: Gemini returned an empty response.")
+            return None
+
+        return content
+
+    except urllib.error.HTTPError as error:
+        try:
+            detail = error.read().decode("utf-8", errors="replace")
+        except Exception:
+            detail = ""
         print(
-            "AI CONFIG ERROR: huggingface_hub could not be imported. "
-            "Check the dependency installation step."
+            f"AI REQUEST ERROR: Gemini HTTP {error.code}: {detail[:1200]}"
         )
         return None
 
-    try:
-
-        client = InferenceClient(
-            provider="auto",
-            api_key=HF_TOKEN
-        )
-
-        print(
-            f"AI CONFIG: HF_TOKEN is present; model={AI_MODEL}; "
-            "provider=auto. Token validity and provider quota "
-            "will be confirmed by the inference request."
-        )
-        return client
-
     except Exception as error:
-
         print(
-            f"AI CLIENT INIT ERROR: {type(error).__name__}: {error}"
+            f"AI REQUEST ERROR: {type(error).__name__}: {error}"
         )
-
         return None
 
 
@@ -964,43 +1028,12 @@ def ai_analyze_news(
 
     try:
 
-        response = client.chat_completion(
-
-            model=AI_MODEL,
-
-            messages=[
-
-                {
-                    "role":
-                    "system",
-
-                    "content":
-                    "تو یک تحلیلگر حرفه‌ای "
-                    "بازارهای مالی هستی. "
-                    "فارسی روان و دقیق بنویس."
-                },
-
-                {
-                    "role":
-                    "user",
-
-                    "content":
-                    prompt
-                }
-            ],
-
-            temperature=0.1,
-
-            max_tokens=1400
-        )
-
-        content = (
-            response
-            .choices[0]
-            .message
-            .content
-            or ""
-        ).strip()
+        content = gemini_generate(
+            client,
+            prompt,
+            "تو یک تحلیلگر حرفه‌ای بازارهای مالی هستی. فارسی روان و دقیق بنویس.",
+            1400
+        ) or ""
 
         if not content:
             print(
@@ -1300,42 +1333,11 @@ Whale Alert دریافت شده است.
 
     try:
 
-        response = client.chat_completion(
-
-            model=AI_MODEL,
-
-            messages=[
-
-                {
-                    "role":
-                    "system",
-
-                    "content":
-                    "تو تحلیلگر حرفه‌ای "
-                    "تراکنش‌های بزرگ کریپتو "
-                    "و مترجم دقیق انگلیسی به فارسی هستی."
-                },
-
-                {
-                    "role":
-                    "user",
-
-                    "content":
-                    prompt
-                }
-            ],
-
-            temperature=0.1,
-
-            max_tokens=1500
-        )
-
-        return (
-            response
-            .choices[0]
-            .message
-            .content
-            .strip()
+        return gemini_generate(
+            client,
+            prompt,
+            "تو تحلیلگر حرفه‌ای تراکنش‌های بزرگ کریپتو و مترجم دقیق انگلیسی به فارسی هستی.",
+            1500
         )
 
     except Exception as error:
@@ -1997,8 +1999,7 @@ def fetch_crypto_market():
     url = (
         "https://api.coingecko.com/api/v3/"
         "simple/price"
-        "?ids=bitcoin,ethereum"
-        "&vs_currencies=usd"
+        "?ids=bitcoin,ethereum"        "&vs_currencies=usd"
         "&include_24hr_change=true"
     )
 
@@ -2747,7 +2748,7 @@ def main():
     print(
         "AI:",
         "ENABLED"
-        if HF_TOKEN
+        if GEMINI_API_KEY
         else
         "FALLBACK"
     )
