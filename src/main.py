@@ -2239,26 +2239,26 @@ def build_market_snapshot():
 
     if coin_full_toman > 0:
         coin_sections.append(
-            "🪙 سکه تمام امامی:\\n"
-            + f"{coin_full_toman:,.0f} تومان\\n"
+            "🪙 سکه تمام امامی:\n"
+            + f"{coin_full_toman:,.0f} تومان\n"
             + format_change(coin_full.get("change", 0))
         )
 
     if coin_half_toman > 0:
         coin_sections.append(
-            "🪙 نیم‌سکه:\\n"
-            + f"{coin_half_toman:,.0f} تومان\\n"
+            "🪙 نیم‌سکه:\n"
+            + f"{coin_half_toman:,.0f} تومان\n"
             + format_change(coin_half.get("change", 0))
         )
 
     if coin_quarter_toman > 0:
         coin_sections.append(
-            "🪙 ربع‌سکه:\\n"
-            + f"{coin_quarter_toman:,.0f} تومان\\n"
+            "🪙 ربع‌سکه:\n"
+            + f"{coin_quarter_toman:,.0f} تومان\n"
             + format_change(coin_quarter.get("change", 0))
         )
 
-    coin_section_text = "\\n\\n".join(coin_sections)
+    coin_section_text = "\n\n".join(coin_sections)
 
     btc_display = (
         f"${btc_usd:,.0f}"
