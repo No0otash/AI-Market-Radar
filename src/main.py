@@ -1999,7 +1999,8 @@ def fetch_crypto_market():
     url = (
         "https://api.coingecko.com/api/v3/"
         "simple/price"
-        "?ids=bitcoin,ethereum"        "&vs_currencies=usd"
+        "?ids=bitcoin,ethereum"
+        "&vs_currencies=usd"
         "&include_24hr_change=true"
     )
 
@@ -3040,5 +3041,3 @@ def main():
 # ============================================================
 
 if __name__ == "__main__":
-
-    main()
