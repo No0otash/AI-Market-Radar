@@ -88,7 +88,7 @@ TGJU_BASE_URL = "https://www.tgju.org"
 
 TGJU_PROFILES = {
     "usd": "/profile/price_dollar_rl",
-    "gold24": "/profile/geram24"
+    "gold18": "/profile/tgju_gold_irg18"
 }
 
 MARKET_UPDATE_HOURS = 5
@@ -1955,7 +1955,7 @@ def fetch_tgju_market():
     )
 
     print(
-        "USD + GOLD 24K PER GRAM"
+        "USD + GOLD 18K PER GRAM"
     )
 
     print(
@@ -1973,10 +1973,10 @@ def fetch_tgju_market():
 
     gold = fetch_tgju_item(
 
-        "GOLD 24K PER GRAM",
+        "GOLD 18K PER GRAM",
 
         TGJU_PROFILES[
-            "gold24"
+            "gold18"
         ]
     )
 
@@ -2252,7 +2252,7 @@ def build_market_snapshot():
 {usd_display}
 {usd_change_display}
 
-🥇 طلای ۲۴ عیار (هر گرم):
+🥇 طلای ۱۸ عیار (هر گرم):
 {gold_display}
 {gold_change_display}
 
