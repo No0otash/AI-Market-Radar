@@ -2235,25 +2235,30 @@ def build_market_snapshot():
         "داده ناموجود"
     )
 
-    coin_full_display = (
-        f"{coin_full_toman:,.0f} تومان" if coin_full_toman > 0 else "داده ناموجود"
-    )
-    coin_half_display = (
-        f"{coin_half_toman:,.0f} تومان" if coin_half_toman > 0 else "داده ناموجود"
-    )
-    coin_quarter_display = (
-        f"{coin_quarter_toman:,.0f} تومان" if coin_quarter_toman > 0 else "داده ناموجود"
-    )
+    coin_sections = []
 
-    coin_full_change_display = (
-        format_change(coin_full.get("change", 0)) if coin_full_toman > 0 else "⚪ تغییر ناموجود"
-    )
-    coin_half_change_display = (
-        format_change(coin_half.get("change", 0)) if coin_half_toman > 0 else "⚪ تغییر ناموجود"
-    )
-    coin_quarter_change_display = (
-        format_change(coin_quarter.get("change", 0)) if coin_quarter_toman > 0 else "⚪ تغییر ناموجود"
-    )
+    if coin_full_toman > 0:
+        coin_sections.append(
+            "🪙 سکه تمام امامی:\\n"
+            + f"{coin_full_toman:,.0f} تومان\\n"
+            + format_change(coin_full.get("change", 0))
+        )
+
+    if coin_half_toman > 0:
+        coin_sections.append(
+            "🪙 نیم‌سکه:\\n"
+            + f"{coin_half_toman:,.0f} تومان\\n"
+            + format_change(coin_half.get("change", 0))
+        )
+
+    if coin_quarter_toman > 0:
+        coin_sections.append(
+            "🪙 ربع‌سکه:\\n"
+            + f"{coin_quarter_toman:,.0f} تومان\\n"
+            + format_change(coin_quarter.get("change", 0))
+        )
+
+    coin_section_text = "\\n\\n".join(coin_sections)
 
     btc_display = (
         f"${btc_usd:,.0f}"
@@ -2311,17 +2316,7 @@ def build_market_snapshot():
 {gold_display}
 {gold_change_display}
 
-🪙 سکه تمام امامی:
-{coin_full_display}
-{coin_full_change_display}
-
-🪙 نیم‌سکه:
-{coin_half_display}
-{coin_half_change_display}
-
-🪙 ربع‌سکه:
-{coin_quarter_display}
-{coin_quarter_change_display}
+{coin_section_text}
 
 ₿ BTC:
 {btc_display}
